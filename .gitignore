@@ -1,0 +1,10 @@
+*.exe
+*.dll
+*.o
+*.obj
+*.pdb
+build/
+.gradle/
+**/build/
+local.properties
+.superpowers/
