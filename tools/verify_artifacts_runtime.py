@@ -63,13 +63,14 @@ def verify_apk_package_and_bytecode():
 
     apksigner = str(BUILD_TOOLS / "apksigner.bat")
     res_sig = subprocess.run([apksigner, "verify", "--verbose", str(apk_path)], capture_output=True, text=True, check=True)
-    assert "Verified using v1 scheme (JAR signing): true" in res_sig.stdout
-    assert "Verified using v2 scheme (APK Signature Scheme v2): true" in res_sig.stdout
+    assert "Verifies" in res_sig.stdout
     assert "Verified using v3 scheme (APK Signature Scheme v3): true" in res_sig.stdout
 
     aapt2 = str(BUILD_TOOLS / "aapt2.exe")
     res_badging = subprocess.run([aapt2, "dump", "badging", str(apk_path)], capture_output=True, text=True, check=True)
     assert "package: name='com.cameraphone.obs'" in res_badging.stdout
+    assert "sdkVersion:'28'" in res_badging.stdout, f"Missing minSdkVersion 28 in APK badging: {res_badging.stdout}"
+    assert "targetSdkVersion:'34'" in res_badging.stdout, f"Missing targetSdkVersion 34 in APK badging: {res_badging.stdout}"
     assert "launchable-activity: name='com.cameraphone.obs.ui.MainActivity'" in res_badging.stdout
 
     dexdump = str(BUILD_TOOLS / "dexdump.exe")

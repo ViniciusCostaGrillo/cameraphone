@@ -133,6 +133,10 @@ def build_apk():
             aapt2, "link",
             "-I", ANDROID_JAR,
             "--manifest", str(manifest),
+            "--min-sdk-version", "28",
+            "--target-sdk-version", "34",
+            "--version-code", "1",
+            "--version-name", "1.0.0",
             "-o", str(unaligned_apk),
             "--java", str(r_java_dir),
             str(compiled_res_zip)
@@ -142,6 +146,10 @@ def build_apk():
             aapt2, "link",
             "-I", ANDROID_JAR,
             "--manifest", str(manifest),
+            "--min-sdk-version", "28",
+            "--target-sdk-version", "34",
+            "--version-code", "1",
+            "--version-name", "1.0.0",
             "-o", str(unaligned_apk),
             "--java", str(r_java_dir)
         ], check=True)
@@ -200,6 +208,9 @@ def build_apk():
     apksigner = str(BUILD_TOOLS / "apksigner.bat")
     subprocess.run([
         apksigner, "sign",
+        "--v1-signing-enabled", "true",
+        "--v2-signing-enabled", "true",
+        "--v3-signing-enabled", "true",
         "--ks", str(keystore),
         "--ks-pass", "pass:android",
         "--key-pass", "pass:android",
