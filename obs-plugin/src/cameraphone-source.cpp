@@ -321,6 +321,7 @@ static const char* source_get_name(void*) {
 static void source_get_defaults(obs_data_t* settings) {
     auto& api = ObsApi::instance();
     if (!api.obs_data_set_default_string) return;
+    api.obs_data_set_default_string(settings, "ui_language", "pt");
     api.obs_data_set_default_string(settings, "conn_mode", "usb");
     api.obs_data_set_default_string(settings, "usb_device", "127.0.0.1");
     api.obs_data_set_default_string(settings, "wifi_ip", "192.168.1.100");
@@ -437,11 +438,17 @@ static obs_properties_t* source_get_properties(void* data) {
     auto* ctx = static_cast<CameraPhoneSourceContext*>(data);
     obs_properties_t* props = api.obs_properties_create();
 
+    // 0. Language Selector (Português / English)
+    auto* lang_list = api.obs_properties_add_list(
+        props, "ui_language", "Idioma / Language", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+    api.obs_property_list_add_string(lang_list, "🇧🇷 Portugues", "pt");
+    api.obs_property_list_add_string(lang_list, "🇺🇸 English", "en");
+
     // 1. Connection Mode Selector (USB Cable vs Wi-Fi IP)
     auto* mode_list = api.obs_properties_add_list(
-        props, "conn_mode", "Modo de Conexao", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
-    api.obs_property_list_add_string(mode_list, "Cabo USB (Zero-Config Automatico)", "usb");
-    api.obs_property_list_add_string(mode_list, "Wi-Fi (Conectar por IP na Rede)", "wifi");
+        props, "conn_mode", "Modo de Conexao / Connection Mode", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+    api.obs_property_list_add_string(mode_list, "Cabo USB / USB Cable (Zero-Config)", "usb");
+    api.obs_property_list_add_string(mode_list, "Wi-Fi (Conectar por IP / Connect by IP)", "wifi");
     if (api.obs_property_set_modified_callback2) {
         api.obs_property_set_modified_callback2(mode_list, on_conn_mode_modified, ctx);
     }

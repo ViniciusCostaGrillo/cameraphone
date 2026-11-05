@@ -30,14 +30,27 @@ import com.cameraphone.app.util.AppLogger
 import java.net.Inet4Address
 import java.net.NetworkInterface
 
+enum class AppLanguage { PT, EN }
+
 class MainActivity : Activity() {
 
     private var streamService: CameraStreamService? = null
+    private var currentLanguage = AppLanguage.PT
+    private var currentTally = "idle"
+    private var isStreaming = false
+    private var lastTelemetryInfo = ""
+
+    private lateinit var langToggleBtn: Button
     private lateinit var tallyBanner: TextView
     private lateinit var ipInfoText: TextView
+    private lateinit var pinLabelText: TextView
     private lateinit var pinValueText: TextView
+    private lateinit var rotatePinBtn: Button
     private lateinit var telemetryText: TextView
     private lateinit var usbOnlySwitch: Switch
+    private lateinit var logTitleText: TextView
+    private lateinit var copyLogBtn: Button
+    private lateinit var blackoutBtn: Button
     private lateinit var logConsoleText: TextView
     private lateinit var logScrollView: ScrollView
     private lateinit var rootContainer: LinearLayout
@@ -64,7 +77,13 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        val prefs = getSharedPreferences("cameraphone_prefs", Context.MODE_PRIVATE)
+        val savedLang = prefs.getString("language", "PT") ?: "PT"
+        currentLanguage = if (savedLang == "EN") AppLanguage.EN else AppLanguage.PT
+
         buildMinimalistOledUi()
+        applyLanguageStrings()
         requestNecessaryPermissions()
 
         AppLogger.onLogUpdated = {
@@ -90,24 +109,76 @@ class MainActivity : Activity() {
                     }
                 }
             }
-            "Sem Wi-Fi (Use Cabo USB)"
+            if (currentLanguage == AppLanguage.PT) "Sem Wi-Fi (Use Cabo USB)" else "No Wi-Fi (Use USB Cable)"
         } catch (_: Throwable) {
-            "Desconhecido"
+            if (currentLanguage == AppLanguage.PT) "Desconhecido" else "Unknown"
         }
     }
 
     private fun updateIpBanner(usbOnly: Boolean) {
         val ip = detectWifiIpv4()
         ipInfoText.text = if (usbOnly) {
-            "🔌 MODO EXCLUSIVO CABO USB (127.0.0.1:4748) • Wi-Fi Bloqueado"
+            if (currentLanguage == AppLanguage.PT) {
+                "🔌 MODO EXCLUSIVO CABO USB (127.0.0.1:4748) • Wi-Fi Bloqueado"
+            } else {
+                "🔌 EXCLUSIVE USB CABLE MODE (127.0.0.1:4748) • Wi-Fi Blocked"
+            }
         } else {
-            "📶 IP Wi-Fi: $ip:4748  |  🔌 Cabo USB: 127.0.0.1:4748"
+            if (currentLanguage == AppLanguage.PT) {
+                "📶 IP Wi-Fi: $ip:4748  |  🔌 Cabo USB: 127.0.0.1:4748"
+            } else {
+                "📶 Wi-Fi IP: $ip:4748  |  🔌 USB Cable: 127.0.0.1:4748"
+            }
         }
+    }
+
+    private fun applyLanguageStrings() {
+        langToggleBtn.text = if (currentLanguage == AppLanguage.PT) "🇧🇷 PT" else "🇺🇸 EN"
+        updateIpBanner(usbOnlySwitch.isChecked)
+        pinLabelText.text = if (currentLanguage == AppLanguage.PT) {
+            "PIN WI-FI ZERO-TRUST (No Cabo USB a conexão é automática sem PIN)"
+        } else {
+            "ZERO-TRUST WI-FI PIN (USB Cable connects automatically without PIN)"
+        }
+        rotatePinBtn.text = if (currentLanguage == AppLanguage.PT) {
+            "Gerar Novo PIN (Desconectar Outros)"
+        } else {
+            "Generate New PIN (Disconnect Others)"
+        }
+        usbOnlySwitch.text = if (currentLanguage == AppLanguage.PT) {
+            "Bloquear Wi-Fi (Permitir Somente Cabo USB)"
+        } else {
+            "Block Wi-Fi (Allow USB Cable Only)"
+        }
+        logTitleText.text = if (currentLanguage == AppLanguage.PT) {
+            "📋 LOGS DE DIAGNÓSTICO EM TEMPO REAL"
+        } else {
+            "📋 REAL-TIME DIAGNOSTIC LOGS"
+        }
+        copyLogBtn.text = if (currentLanguage == AppLanguage.PT) "Copiar Logs" else "Copy Logs"
+        blackoutBtn.text = if (currentLanguage == AppLanguage.PT) {
+            "Modo Tela Preta OLED (Duplo Toque p/ Sair)"
+        } else {
+            "OLED Blackout Mode (Double Tap to Exit)"
+        }
+        updateStatusUi(currentTally, isStreaming, lastTelemetryInfo)
+    }
+
+    private fun toggleLanguage() {
+        currentLanguage = if (currentLanguage == AppLanguage.PT) AppLanguage.EN else AppLanguage.PT
+        getSharedPreferences("cameraphone_prefs", Context.MODE_PRIVATE)
+            .edit()
+            .putString("language", currentLanguage.name)
+            .apply()
+        applyLanguageStrings()
+        val msg = if (currentLanguage == AppLanguage.PT) "Idioma alterado para Português" else "Language changed to English"
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
     }
 
     private fun refreshLogsUi() {
         if (!::logConsoleText.isInitialized) return
-        logConsoleText.text = AppLogger.dumpText().ifEmpty { "[Log] Aguardando eventos..." }
+        val emptyMsg = if (currentLanguage == AppLanguage.PT) "[Log] Aguardando eventos..." else "[Log] Waiting for events..."
+        logConsoleText.text = AppLogger.dumpText().ifEmpty { emptyMsg }
         logScrollView.post { logScrollView.fullScroll(View.FOCUS_DOWN) }
     }
 
@@ -121,24 +192,40 @@ class MainActivity : Activity() {
             setPadding(dp(18), dp(18), dp(18), dp(18))
         }
 
-        // 0. Brand Header with CameraPhone Icon
+        // 0. Brand Header with CameraPhone Icon and Language Toggle Button
         val brandRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
+            gravity = Gravity.CENTER_VERTICAL
             setPadding(0, 0, 0, dp(10))
         }
         val logoImg = ImageView(this).apply {
             setImageResource(R.mipmap.ic_launcher)
-            layoutParams = LinearLayout.LayoutParams(dp(42), dp(42)).apply { rightMargin = dp(10) }
+            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply { rightMargin = dp(10) }
         }
         val brandTitle = TextView(this).apply {
             text = "CameraPhone 4K Pro"
             setTextColor(Color.WHITE)
-            textSize = 20f
+            textSize = 19f
             typeface = Typeface.DEFAULT_BOLD
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
+        langToggleBtn = Button(this).apply {
+            text = "🇧🇷 PT"
+            textSize = 11f
+            setTextColor(Color.parseColor("#38BDF8"))
+            typeface = Typeface.DEFAULT_BOLD
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#1E293B"))
+                cornerRadius = dp(8).toFloat()
+                setStroke(dp(1), Color.parseColor("#0284C7"))
+            }
+            setPadding(dp(10), dp(4), dp(10), dp(4))
+            setOnClickListener { toggleLanguage() }
+        }
+
         brandRow.addView(logoImg)
         brandRow.addView(brandTitle)
+        brandRow.addView(langToggleBtn)
         rootContainer.addView(brandRow)
 
         // 1. Tally Status Banner
@@ -181,7 +268,7 @@ class MainActivity : Activity() {
                 setStroke(dp(1), Color.parseColor("#2E3440"))
             }
         }
-        val pinLabel = TextView(this).apply {
+        pinLabelText = TextView(this).apply {
             text = "PIN WI-FI ZERO-TRUST (No Cabo USB a conexão é automática sem PIN)"
             setTextColor(Color.parseColor("#8AB4F8"))
             textSize = 10f
@@ -194,7 +281,7 @@ class MainActivity : Activity() {
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
             setPadding(0, dp(4), 0, dp(8))
         }
-        val rotateBtn = Button(this).apply {
+        rotatePinBtn = Button(this).apply {
             text = "Gerar Novo PIN (Desconectar Outros)"
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#262B33"))
@@ -204,16 +291,16 @@ class MainActivity : Activity() {
                 AppLogger.info("UI", "PIN rotated by user")
             }
         }
-        pinCard.addView(pinLabel)
+        pinCard.addView(pinLabelText)
         pinCard.addView(pinValueText)
-        pinCard.addView(rotateBtn)
+        pinCard.addView(rotatePinBtn)
 
         rootContainer.addView(pinCard, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { topMargin = dp(8) })
 
-        // 4. Transport Security Switch (Default OFF so both USB & Wi-Fi work immediately!)
+        // 4. Transport Security Switch
         usbOnlySwitch = Switch(this).apply {
             text = "Bloquear Wi-Fi (Permitir Somente Cabo USB)"
             setTextColor(Color.WHITE)
@@ -242,14 +329,14 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        val logTitle = TextView(this).apply {
+        logTitleText = TextView(this).apply {
             text = "📋 LOGS DE DIAGNÓSTICO EM TEMPO REAL"
             setTextColor(Color.parseColor("#8AB4F8"))
             textSize = 11f
             typeface = Typeface.DEFAULT_BOLD
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        val copyLogBtn = Button(this).apply {
+        copyLogBtn = Button(this).apply {
             text = "Copiar Logs"
             textSize = 10f
             setTextColor(Color.WHITE)
@@ -257,10 +344,11 @@ class MainActivity : Activity() {
             setOnClickListener {
                 val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 cm.setPrimaryClip(ClipData.newPlainText("CameraPhone-Logs", AppLogger.dumpText()))
-                Toast.makeText(this@MainActivity, "Logs copiados!", Toast.LENGTH_SHORT).show()
+                val msg = if (currentLanguage == AppLanguage.PT) "Logs copiados!" else "Logs copied!"
+                Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
             }
         }
-        logHeaderRow.addView(logTitle)
+        logHeaderRow.addView(logTitleText)
         logHeaderRow.addView(copyLogBtn)
         rootContainer.addView(logHeaderRow)
 
@@ -286,7 +374,7 @@ class MainActivity : Activity() {
         ).apply { topMargin = dp(6); bottomMargin = dp(8) })
 
         // 7. OLED Blackout Button
-        val blackoutBtn = Button(this).apply {
+        blackoutBtn = Button(this).apply {
             text = "Modo Tela Preta OLED (Duplo Toque p/ Sair)"
             setTextColor(Color.parseColor("#00E676"))
             setBackgroundColor(Color.parseColor("#16191E"))
@@ -298,10 +386,20 @@ class MainActivity : Activity() {
     }
 
     private fun updateStatusUi(tally: String, streaming: Boolean, info: String) {
+        currentTally = tally
+        isStreaming = streaming
+        lastTelemetryInfo = info
+
         if (!streaming) {
-            tallyBanner.text = "● AGUARDANDO CONEXÃO (PORTA 4748)"
+            tallyBanner.text = if (currentLanguage == AppLanguage.PT) {
+                "● AGUARDANDO CONEXÃO (PORTA 4748)"
+            } else {
+                "● WAITING FOR CONNECTION (PORT 4748)"
+            }
             tallyBanner.setTextColor(Color.parseColor("#9AA0A6"))
-            telemetryText.text = if (info.isNotEmpty()) info else "Standby • Nenhum cliente conectado"
+            telemetryText.text = if (info.isNotEmpty()) info else (
+                if (currentLanguage == AppLanguage.PT) "Standby • Nenhum cliente conectado" else "Standby • No client connected"
+            )
             return
         }
         if (info.isNotEmpty()) {
@@ -309,15 +407,15 @@ class MainActivity : Activity() {
         }
         when (tally.lowercase()) {
             "program" -> {
-                tallyBanner.text = "● NO AR (TRANSMISSÃO ATIVA)"
+                tallyBanner.text = if (currentLanguage == AppLanguage.PT) "● NO AR (TRANSMISSÃO ATIVA)" else "● ON AIR (LIVE STREAMING)"
                 tallyBanner.setTextColor(Color.parseColor("#FF1744"))
             }
             "preview" -> {
-                tallyBanner.text = "● EM PREVIEW"
+                tallyBanner.text = if (currentLanguage == AppLanguage.PT) "● EM PREVIEW" else "● IN PREVIEW"
                 tallyBanner.setTextColor(Color.parseColor("#00E676"))
             }
             else -> {
-                tallyBanner.text = "● TRANSMITINDO VÍDEO"
+                tallyBanner.text = if (currentLanguage == AppLanguage.PT) "● TRANSMITINDO VÍDEO" else "● STREAMING VIDEO"
                 tallyBanner.setTextColor(Color.parseColor("#8AB4F8"))
             }
         }

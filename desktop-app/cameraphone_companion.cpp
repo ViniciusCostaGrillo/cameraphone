@@ -155,20 +155,56 @@ static std::string install_android_apk_and_tunnel() {
     return msg;
 }
 
+enum class UiLanguage { PT, EN };
+static UiLanguage g_ui_lang = UiLanguage::PT;
+
 enum ControlIds : int {
     ID_BTN_INSTALL_PLUGIN = 101,
     ID_BTN_SETUP_USB      = 102,
     ID_BTN_PROBE_CAPS     = 103,
     ID_BTN_VIEW_LOGS      = 107,
+    ID_BTN_TOGGLE_LANG    = 108,
     ID_EDIT_HOST          = 104,
     ID_EDIT_PIN           = 105,
     ID_EDIT_LOG           = 106
 };
 
-static HWND g_edit_host = nullptr;
-static HWND g_edit_pin  = nullptr;
-static HWND g_edit_log  = nullptr;
-static HBRUSH g_bg_brush = nullptr;
+static HWND g_title_hwnd       = nullptr;
+static HWND g_label_host_hwnd  = nullptr;
+static HWND g_label_pin_hwnd   = nullptr;
+static HWND g_btn_install_hwnd = nullptr;
+static HWND g_btn_usb_hwnd     = nullptr;
+static HWND g_btn_probe_hwnd   = nullptr;
+static HWND g_btn_logs_hwnd    = nullptr;
+static HWND g_btn_lang_hwnd    = nullptr;
+static HWND g_edit_host        = nullptr;
+static HWND g_edit_pin         = nullptr;
+static HWND g_edit_log         = nullptr;
+static HBRUSH g_bg_brush       = nullptr;
+
+static void update_ui_language(HWND hwnd) {
+    if (g_ui_lang == UiLanguage::PT) {
+        SetWindowTextA(hwnd, "CameraPhone 4K Pro - Instalador & Central de Logs");
+        if (g_title_hwnd) SetWindowTextA(g_title_hwnd, "CameraPhone 4K60/120 HDR - Instalador & Central de Logs");
+        if (g_label_host_hwnd) SetWindowTextA(g_label_host_hwnd, "Host (USB 127.0.0.1 ou IP Wi-Fi):");
+        if (g_label_pin_hwnd) SetWindowTextA(g_label_pin_hwnd, "PIN Wi-Fi (Vazio no Cabo USB):");
+        if (g_btn_install_hwnd) SetWindowTextA(g_btn_install_hwnd, "1. Instalar Plugin");
+        if (g_btn_usb_hwnd) SetWindowTextA(g_btn_usb_hwnd, "2. Instalar APK (USB)");
+        if (g_btn_probe_hwnd) SetWindowTextA(g_btn_probe_hwnd, "3. Testar Conexao");
+        if (g_btn_logs_hwnd) SetWindowTextA(g_btn_logs_hwnd, "4. Ver Logs (PC + APK)");
+        if (g_btn_lang_hwnd) SetWindowTextA(g_btn_lang_hwnd, "🇧🇷 PT");
+    } else {
+        SetWindowTextA(hwnd, "CameraPhone 4K Pro - Installer & Log Center");
+        if (g_title_hwnd) SetWindowTextA(g_title_hwnd, "CameraPhone 4K60/120 HDR - Installer & Log Center");
+        if (g_label_host_hwnd) SetWindowTextA(g_label_host_hwnd, "Host (USB 127.0.0.1 or Wi-Fi IP):");
+        if (g_label_pin_hwnd) SetWindowTextA(g_label_pin_hwnd, "Wi-Fi PIN (Empty on USB Cable):");
+        if (g_btn_install_hwnd) SetWindowTextA(g_btn_install_hwnd, "1. Install Plugin");
+        if (g_btn_usb_hwnd) SetWindowTextA(g_btn_usb_hwnd, "2. Install APK (USB)");
+        if (g_btn_probe_hwnd) SetWindowTextA(g_btn_probe_hwnd, "3. Test Connection");
+        if (g_btn_logs_hwnd) SetWindowTextA(g_btn_logs_hwnd, "4. View Logs (PC + APK)");
+        if (g_btn_lang_hwnd) SetWindowTextA(g_btn_lang_hwnd, "🇺🇸 EN");
+    }
+}
 
 static void append_log(const std::string& msg) {
     if (!g_edit_log) return;
@@ -213,39 +249,44 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
             SendMessageA(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(hIconBig));
         }
 
-        HWND title = CreateWindowExA(0, "STATIC", "CameraPhone 4K60/120 HDR - Instalador & Central de Logs",
-                                     WS_CHILD | WS_VISIBLE, 20, 14, 620, 28, hwnd, nullptr, nullptr, nullptr);
-        SendMessageA(title, WM_SETFONT, reinterpret_cast<WPARAM>(font_title), TRUE);
+        g_title_hwnd = CreateWindowExA(0, "STATIC", "CameraPhone 4K60/120 HDR - Instalador & Central de Logs",
+                                       WS_CHILD | WS_VISIBLE, 20, 14, 520, 28, hwnd, nullptr, nullptr, nullptr);
+        SendMessageA(g_title_hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font_title), TRUE);
 
-        CreateWindowExA(0, "STATIC", "Host (USB 127.0.0.1 ou IP Wi-Fi):",
-                        WS_CHILD | WS_VISIBLE, 20, 50, 260, 20, hwnd, nullptr, nullptr, nullptr);
+        g_btn_lang_hwnd = CreateWindowExA(0, "BUTTON", "🇧🇷 PT",
+                                          WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                                          550, 12, 110, 28, hwnd, reinterpret_cast<HMENU>(ID_BTN_TOGGLE_LANG), nullptr, nullptr);
+        SendMessageA(g_btn_lang_hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font_ui), TRUE);
+
+        g_label_host_hwnd = CreateWindowExA(0, "STATIC", "Host (USB 127.0.0.1 ou IP Wi-Fi):",
+                                            WS_CHILD | WS_VISIBLE, 20, 50, 260, 20, hwnd, nullptr, nullptr, nullptr);
         g_edit_host = CreateWindowExA(WS_EX_CLIENTEDGE, "EDIT", "127.0.0.1",
                                       WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
                                       20, 72, 260, 26, hwnd, reinterpret_cast<HMENU>(ID_EDIT_HOST), nullptr, nullptr);
         SendMessageA(g_edit_host, WM_SETFONT, reinterpret_cast<WPARAM>(font_ui), TRUE);
 
-        CreateWindowExA(0, "STATIC", "PIN Wi-Fi (Vazio no Cabo USB):",
-                        WS_CHILD | WS_VISIBLE, 300, 50, 260, 20, hwnd, nullptr, nullptr, nullptr);
+        g_label_pin_hwnd = CreateWindowExA(0, "STATIC", "PIN Wi-Fi (Vazio no Cabo USB):",
+                                           WS_CHILD | WS_VISIBLE, 300, 50, 260, 20, hwnd, nullptr, nullptr, nullptr);
         g_edit_pin = CreateWindowExA(WS_EX_CLIENTEDGE, "EDIT", "",
                                      WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
                                      300, 72, 180, 26, hwnd, reinterpret_cast<HMENU>(ID_EDIT_PIN), nullptr, nullptr);
         SendMessageA(g_edit_pin, WM_SETFONT, reinterpret_cast<WPARAM>(font_ui), TRUE);
 
-        CreateWindowExA(0, "BUTTON", "1. Instalar Plugin",
-                        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                        20, 110, 145, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_INSTALL_PLUGIN), nullptr, nullptr);
+        g_btn_install_hwnd = CreateWindowExA(0, "BUTTON", "1. Instalar Plugin",
+                                             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                                             20, 110, 145, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_INSTALL_PLUGIN), nullptr, nullptr);
 
-        CreateWindowExA(0, "BUTTON", "2. Instalar APK (USB)",
-                        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                        175, 110, 160, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_SETUP_USB), nullptr, nullptr);
+        g_btn_usb_hwnd = CreateWindowExA(0, "BUTTON", "2. Instalar APK (USB)",
+                                         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                                         175, 110, 160, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_SETUP_USB), nullptr, nullptr);
 
-        CreateWindowExA(0, "BUTTON", "3. Testar Conexao",
-                        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                        345, 110, 145, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_PROBE_CAPS), nullptr, nullptr);
+        g_btn_probe_hwnd = CreateWindowExA(0, "BUTTON", "3. Testar Conexao",
+                                           WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                                           345, 110, 145, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_PROBE_CAPS), nullptr, nullptr);
 
-        CreateWindowExA(0, "BUTTON", "4. Ver Logs (PC + APK)",
-                        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                        500, 110, 160, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_VIEW_LOGS), nullptr, nullptr);
+        g_btn_logs_hwnd = CreateWindowExA(0, "BUTTON", "4. Ver Logs (PC + APK)",
+                                          WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                                          500, 110, 160, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_VIEW_LOGS), nullptr, nullptr);
 
         g_edit_log = CreateWindowExA(WS_EX_CLIENTEDGE, "EDIT", "",
                                      WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
@@ -260,6 +301,17 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
     }
     case WM_COMMAND: {
         const int id = LOWORD(wparam);
+        if (id == ID_BTN_TOGGLE_LANG) {
+            g_ui_lang = (g_ui_lang == UiLanguage::PT) ? UiLanguage::EN : UiLanguage::PT;
+            update_ui_language(hwnd);
+            if (g_ui_lang == UiLanguage::PT) {
+                append_log("[Idioma] Idioma da interface alterado para Portugues.");
+            } else {
+                append_log("[Language] UI language switched to English.");
+            }
+            return 0;
+        }
+
         char host_buf[128]{};
         char pin_buf[64]{};
         GetWindowTextA(g_edit_host, host_buf, sizeof(host_buf));
