@@ -1,5 +1,3 @@
-*.exe
-*.dll
 *.o
 *.obj
 *.pdb
@@ -8,3 +6,10 @@ build/
 **/build/
 local.properties
 .superpowers/
+protocol/test_protocol.exe
+!dist/
+!dist/*.exe
+!dist/*.dll
+!dist/*.apk
+!CameraPhone-OBS.exe
+!CameraPhone-OBS.apk

@@ -60,12 +60,44 @@ def build_dll():
     subprocess.run(cmd, check=True)
     print(f"[Plugin Built] {out_dll} ({out_dll.stat().st_size} bytes)")
 
+def build_desktop_exe():
+    dist_dir = ROOT.parent / "dist"
+    dist_dir.mkdir(parents=True, exist_ok=True)
+    cxx = find_compiler()
+    out_exe = dist_dir / "CameraPhone-OBS.exe"
+    cmd = [
+        cxx, "-std=c++20", "-O2", "-Wall", "-Wextra", "-Werror", "-static",
+        "-I", str(ROOT.parent / "protocol"),
+        "-I", str(SRC),
+        str(ROOT.parent / "desktop-app" / "cameraphone_companion.cpp"),
+        str(SRC / "discovery-manager.cpp"),
+        str(SRC / "stream-client.cpp"),
+        "-lws2_32", "-lgdi32", "-luser32", "-lshell32",
+        "-o", str(out_exe)
+    ]
+    print("[Build EXE]", " ".join(cmd))
+    subprocess.run(cmd, check=True)
+    subprocess.run([str(out_exe), "--self-test"], check=True)
+    # Copy DLL and APK alongside the EXE in dist/ and root
+    dll_src = BUILD / "cameraphone-obs.dll"
+    apk_src = ROOT.parent / "android-app" / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
+    if dll_src.exists():
+        shutil.copy2(dll_src, dist_dir / "cameraphone-obs.dll")
+    if apk_src.exists():
+        shutil.copy2(apk_src, dist_dir / "CameraPhone-OBS.apk")
+        shutil.copy2(apk_src, ROOT.parent / "CameraPhone-OBS.apk")
+    shutil.copy2(out_exe, ROOT.parent / "CameraPhone-OBS.exe")
+    print(f"[Desktop Companion Built] {out_exe} ({out_exe.stat().st_size} bytes)")
+
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "all"
     if mode == "test":
         run_tests()
     elif mode == "dll":
         build_dll()
+    elif mode == "exe":
+        build_desktop_exe()
     else:
         run_tests()
         build_dll()
+        build_desktop_exe()

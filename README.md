@@ -21,15 +21,17 @@ Sistema completo e gratuito de câmera profissional via smartphone para o **OBS 
 
 ---
 
-## Estrutura do Projeto
+## Estrutura do Projeto & Binários Prontos (`dist/`)
 
+- [`CameraPhone-OBS.exe`](CameraPhone-OBS.exe) / [`dist/CameraPhone-OBS.exe`](dist/CameraPhone-OBS.exe) — Aplicativo Desktop Companion & Instalador 1-Clique para Windows (instala o plugin no OBS Studio, configura túnel ADB USB e testa o hardware da câmera).
+- [`CameraPhone-OBS.apk`](CameraPhone-OBS.apk) / [`dist/CameraPhone-OBS.apk`](dist/CameraPhone-OBS.apk) — Aplicativo Android compilado e assinado.
+- [`dist/cameraphone-obs.dll`](dist/cameraphone-obs.dll) — Plugin nativo C++20 de 64 bits para OBS Studio.
 - [`docs/droidcam-reverse-engineering.md`](docs/droidcam-reverse-engineering.md) — Relatório completo da engenharia reversa do DroidCam OBS (`droidcam-obs.dll` + `DroidCam APK.apkm`).
 - [`docs/superpowers/specs/2026-11-04-cameraphone-obs-design.md`](docs/superpowers/specs/2026-11-04-cameraphone-obs-design.md) — Especificação de arquitetura e protocolo `CamPhoneWire v1`.
 - [`protocol/`](protocol/) — Header C++20 compartilhado (`camphone_protocol.hpp`) e testes unitários de protocolo/segurança.
-- [`android-app/`](android-app/) — Aplicativo Android nativo em Kotlin (`Camera2` + `MediaCodec` + `NsdManager` + `SecurityGate`).
-  - APK compilado e assinado: `android-app/app/build/outputs/apk/debug/app-debug.apk`
-- [`obs-plugin/`](obs-plugin/) — Plugin nativo C++20 de 64 bits para OBS Studio (`cameraphone-obs.dll`).
-  - Binário compilado: `obs-plugin/build/cameraphone-obs.dll`
+- [`android-app/`](android-app/) — Código-fonte do aplicativo Android nativo em Kotlin (`Camera2` + `MediaCodec` + `NsdManager` + `SecurityGate`).
+- [`obs-plugin/`](obs-plugin/) — Código-fonte do plugin nativo C++20 de 64 bits para OBS Studio (`cameraphone-obs.dll`).
+- [`desktop-app/`](desktop-app/) — Código-fonte do aplicativo Desktop Companion (`CameraPhone-OBS.exe`).
 - [`tools/verify_e2e_stream.py`](tools/verify_e2e_stream.py) — Verificador de integração End-to-End do protocolo, segurança e negociação 4K60 HDR.
 
 ---
