@@ -74,7 +74,12 @@ class CamPhoneServer(
     private fun handleClient(socket: Socket) {
         socket.tcpNoDelay = true
         socket.soTimeout = 5000
-        val remoteIp = socket.inetAddress?.hostAddress ?: "unknown"
+        val inetAddr = socket.inetAddress
+        val remoteIp = if (inetAddr?.isLoopbackAddress == true) {
+            "127.0.0.1"
+        } else {
+            inetAddr?.hostAddress ?: "unknown"
+        }
         var ownsActiveStream = false
 
         try {

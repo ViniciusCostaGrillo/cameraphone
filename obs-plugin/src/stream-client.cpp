@@ -1,4 +1,5 @@
 #include "stream-client.hpp"
+#include "discovery-manager.hpp"
 #include "diagnostic-logger.hpp"
 #include <chrono>
 #include <cstring>
@@ -267,6 +268,9 @@ void StreamClient::start_streaming(const StreamConfig& cfg, BoundedFrameQueue& v
             socket_t s = connect_with_timeout(cfg.host, cfg.port, 2500);
             if (s == kInvalidSocket) {
                 connected_.store(false);
+                if (cfg.host == "127.0.0.1" && cfg.pin == "usb-zero-config") {
+                    DiscoveryManager::ensure_usb_tunnel_ready(cfg.port, cfg.port, true);
+                }
                 std::this_thread::sleep_for(std::chrono::milliseconds(800));
                 continue;
             }
@@ -294,7 +298,11 @@ void StreamClient::start_streaming(const StreamConfig& cfg, BoundedFrameQueue& v
                 http_hdr.push_back(ch);
             }
             if (http_hdr.find("200 OK") == std::string::npos) {
-                DiagnosticLogger::warn("StreamClient", "GET /v1/stream rejected on " + cfg.host + ": " + http_hdr.substr(0, http_hdr.find('\r')));
+                if (cfg.host == "127.0.0.1" && cfg.pin == "usb-zero-config" && http_hdr.empty()) {
+                    DiscoveryManager::ensure_usb_tunnel_ready(cfg.port, cfg.port, true);
+                } else {
+                    DiagnosticLogger::warn("StreamClient", "GET /v1/stream rejected on " + cfg.host + ": " + http_hdr.substr(0, http_hdr.find('\r')));
+                }
                 close_sock(s);
                 connected_.store(false);
                 std::this_thread::sleep_for(std::chrono::milliseconds(1200));

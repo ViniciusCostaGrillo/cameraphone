@@ -181,9 +181,20 @@ def get_local_lan_ip() -> str:
 
 def run_live_emulator_session(frames_path: Path, connect_host: str, init_codec: str, label: str):
     stdlib = r"C:\Program Files\Android\Android Studio\plugins\Kotlin\kotlinc\lib\kotlin-stdlib.jar"
+    kotlinc = r"C:\Program Files\Android\Android Studio\plugins\Kotlin\kotlinc\bin\kotlinc.bat"
     android_jar = r"C:\Users\Vinic\AppData\Local\Android\Sdk\platforms\android-34\android.jar"
-    test_classes = str(ROOT / "android-app" / "build" / "test-classes")
+    test_classes_dir = ROOT / "android-app" / "build" / "test-classes"
+    test_classes = str(test_classes_dir)
     cp = os.pathsep.join([test_classes, stdlib, android_jar])
+
+    emulator_cls = test_classes_dir / "com" / "cameraphone" / "emulator" / "LiveAndroidEmulatorServer.class"
+    if not emulator_cls.exists():
+        subprocess.run([
+            kotlinc,
+            "-cp", cp,
+            str(ROOT / "tools" / "LiveAndroidEmulatorServer.kt"),
+            "-d", test_classes
+        ], check=True)
 
     pin_holder = {"pin": "------"}
     status_holder = {"state": "STANDBY", "lan_ip": connect_host, "codec": init_codec.upper(), "logs": [f"[Init] Starting {label}..."]}
@@ -226,8 +237,9 @@ def run_live_emulator_session(frames_path: Path, connect_host: str, init_codec: 
     threading.Thread(target=drain_stdout, daemon=True).start()
 
     e2e_exe = str(ROOT / "obs-plugin" / "build" / "test_live_emulator_to_obs.exe")
-    print(f"\n=== Running {label}: C++ OBS Plugin -> Android Emulator ({connect_host}:4748, PIN={pin}, init_codec={init_codec}) ===")
-    res = subprocess.run([e2e_exe, connect_host, pin, init_codec], capture_output=True, text=True)
+    effective_pin = "usb-zero-config" if connect_host == "127.0.0.1" else pin
+    print(f"\n=== Running {label}: C++ OBS Plugin -> Android Emulator ({connect_host}:4748, PIN={effective_pin}, init_codec={init_codec}) ===")
+    res = subprocess.run([e2e_exe, connect_host, effective_pin, init_codec], capture_output=True, text=True)
     print(res.stdout)
     if res.stderr:
         print(res.stderr)

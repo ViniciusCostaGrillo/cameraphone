@@ -67,7 +67,8 @@ static bool install_zero_config_bundle(std::string& out_msg, bool allow_uac_prom
         exe_dir / "adb" / "adb.exe",
         exe_dir / "dist" / "adb" / "adb.exe",
         sdk_pt / "adb.exe",
-        R"(C:\Cameraphone Plugin OBS\dist\adb\adb.exe)"
+        R"(C:\Cameraphone Plugin OBS\dist\adb\adb.exe)",
+        R"(C:\Program Files\obs-studio\data\obs-plugins\droidcam-obs\adb\adb.exe)"
     });
 
     if (dll_src.empty()) {
@@ -277,8 +278,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
         } else if (id == ID_BTN_SETUP_USB) {
             append_log(install_android_apk_and_tunnel());
         } else if (id == ID_BTN_PROBE_CAPS) {
+            std::string usb_hint;
             if (host_s == "127.0.0.1") {
-                DiscoveryManager::list_usb_devices(4748, 4748);
+                auto devs = DiscoveryManager::list_usb_devices(4748, 4748, &usb_hint);
+                if (!devs.empty()) {
+                    DiscoveryManager::ensure_usb_tunnel_ready(4748, 4748, true);
+                    Sleep(500);
+                } else if (!usb_hint.empty()) {
+                    append_log("[AVISO USB] " + usb_hint);
+                }
             }
             std::string pin_s = clean_pin.empty() ? (host_s == "127.0.0.1" ? "usb-zero-config" : "") : clean_pin;
             StreamClient client;

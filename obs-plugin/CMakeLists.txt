@@ -35,6 +35,7 @@ add_test(NAME test_client_and_discovery COMMAND test_client_and_discovery)
 
 add_executable(test_live_emulator_to_obs
     tests/test_live_emulator_to_obs.cpp
+    src/discovery-manager.cpp
     src/stream-client.cpp
     src/media-decoder.cpp
 )

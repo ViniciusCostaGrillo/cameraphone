@@ -69,7 +69,11 @@ class SecurityGate(
             return AuthResult.Unauthorized
         }
         val candidate = authHeader.substring(prefix.length).trim()
-        val isLoopback = (remoteIp == "127.0.0.1" || remoteIp == "::1")
+        val isLoopback = (remoteIp == "127.0.0.1" ||
+                          remoteIp == "::1" ||
+                          remoteIp == "0:0:0:0:0:0:0:1" ||
+                          remoteIp.startsWith("127.") ||
+                          remoteIp.endsWith(":127.0.0.1"))
         if (isLoopback && candidate == "usb-zero-config") {
             ipAttempts.remove(remoteIp)
             return AuthResult.Authorized

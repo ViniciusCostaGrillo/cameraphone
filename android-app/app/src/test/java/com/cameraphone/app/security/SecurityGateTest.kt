@@ -18,6 +18,10 @@ class SecurityGateTest {
 
         assertEquals(AuthResult.Authorized, gate.verifyRequest("192.168.1.50", "Bearer $pin"))
         assertEquals(AuthResult.Unauthorized, gate.verifyRequest("192.168.1.50", "Bearer 000000"))
+        assertEquals(AuthResult.Unauthorized, gate.verifyRequest("192.168.1.50", "Bearer usb-zero-config"))
+        assertEquals(AuthResult.Authorized, gate.verifyRequest("127.0.0.1", "Bearer usb-zero-config"))
+        assertEquals(AuthResult.Authorized, gate.verifyRequest("::1", "Bearer usb-zero-config"))
+        assertEquals(AuthResult.Authorized, gate.verifyRequest("::ffff:127.0.0.1", "Bearer usb-zero-config"))
     }
 
     @Test

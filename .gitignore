@@ -1,6 +1,7 @@
 *.o
 *.obj
 *.pdb
+*.zip
 build/
 .gradle/
 **/build/
@@ -11,5 +12,6 @@ protocol/test_protocol.exe
 !dist/*.exe
 !dist/*.dll
 !dist/*.apk
-!CameraPhone-OBS.exe
-!CameraPhone-OBS.apk
+!dist/adb/
+!dist/adb/*.exe
+!dist/adb/*.dll

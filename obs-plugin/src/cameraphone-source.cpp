@@ -215,11 +215,11 @@ struct CameraPhoneSourceContext {
     void start_pipeline() {
         stop_pipeline();
         if (conn_mode == "usb") {
-            DiscoveryManager::list_usb_devices(config.port, config.port);
             config.host = "127.0.0.1";
             if (config.pin.empty()) {
                 config.pin = "usb-zero-config";
             }
+            DiscoveryManager::ensure_usb_tunnel_ready(config.port, config.port, true);
         }
         DiagnosticLogger::info("OBS-Source", "Starting pipeline: mode=" + conn_mode + " host=" + config.host + ":" + std::to_string(config.port) + " res=" + std::to_string(config.width) + "x" + std::to_string(config.height) + "@" + std::to_string(config.fps) + " codec=" + config.codec);
 

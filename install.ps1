@@ -5,10 +5,17 @@
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-$DllSrc = Join-Path $Root "dist\cameraphone.dll"
+$DllSrc = if (Test-Path (Join-Path $Root "dist\cameraphone.dll")) { Join-Path $Root "dist\cameraphone.dll" } else { Join-Path $Root "cameraphone.dll" }
 $PluginsDir = "C:\Program Files\obs-studio\obs-plugins\64bit"
-$ApkSrc = Join-Path $Root "dist\CameraPhone.apk"
-$AdbExe = "C:\Users\Vinic\AppData\Local\Android\Sdk\platform-tools\adb.exe"
+$DataDir = "C:\Program Files\obs-studio\data\obs-plugins\cameraphone"
+$ApkSrc = if (Test-Path (Join-Path $Root "dist\CameraPhone.apk")) { Join-Path $Root "dist\CameraPhone.apk" } else { Join-Path $Root "CameraPhone.apk" }
+$AdbExe = if (Test-Path (Join-Path $Root "dist\adb\adb.exe")) {
+    Join-Path $Root "dist\adb\adb.exe"
+} elseif (Test-Path (Join-Path $Root "adb\adb.exe")) {
+    Join-Path $Root "adb\adb.exe"
+} else {
+    "C:\Users\Vinic\AppData\Local\Android\Sdk\platform-tools\adb.exe"
+}
 
 Write-Host "=== CameraPhone 4K Pro Installer ===" -ForegroundColor Cyan
 
@@ -16,7 +23,15 @@ if (Test-Path $PluginsDir) {
     try {
         Remove-Item (Join-Path $PluginsDir "cameraphone-obs.dll") -Force -ErrorAction SilentlyContinue
         Copy-Item $DllSrc (Join-Path $PluginsDir "cameraphone.dll") -Force
-        Write-Host "[OK] Plugin instalado em: $PluginsDir\cameraphone.dll" -ForegroundColor Green
+        New-Item -ItemType Directory -Force -Path (Join-Path $DataDir "adb") | Out-Null
+        if (Test-Path $ApkSrc) { Copy-Item $ApkSrc (Join-Path $DataDir "CameraPhone.apk") -Force }
+        if (Test-Path $AdbExe) {
+            $AdbDir = Split-Path -Parent $AdbExe
+            Copy-Item (Join-Path $AdbDir "adb.exe") (Join-Path $DataDir "adb\adb.exe") -Force -ErrorAction SilentlyContinue
+            Copy-Item (Join-Path $AdbDir "AdbWinApi.dll") (Join-Path $DataDir "adb\AdbWinApi.dll") -Force -ErrorAction SilentlyContinue
+            Copy-Item (Join-Path $AdbDir "AdbWinUsbApi.dll") (Join-Path $DataDir "adb\AdbWinUsbApi.dll") -Force -ErrorAction SilentlyContinue
+        }
+        Write-Host "[OK] Plugin + ADB instalados em: $PluginsDir\cameraphone.dll" -ForegroundColor Green
     } catch {
         Write-Host "[!] Execute CameraPhone.exe para instalar automaticamente com elevacao UAC." -ForegroundColor Yellow
     }
