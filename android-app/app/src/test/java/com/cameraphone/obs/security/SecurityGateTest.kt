@@ -1,7 +1,11 @@
 package com.cameraphone.obs.security
 
+import com.cameraphone.obs.net.CamPhoneServer
 import org.junit.Assert.*
 import org.junit.Test
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.Socket
 
 class SecurityGateTest {
 
@@ -67,5 +71,41 @@ class SecurityGateTest {
     fun `rejects unknown lens id injection`() {
         val bounds = CameraBounds(1f, 8f, 100, 3200, 1000L, 1000000L, -6, 6, setOf("0", "2"))
         SecurityGate.sanitizeControlPatch(RawControlPatch(lensId = "0; rm -rf /"), bounds)
+    }
+
+    @Test
+    fun `server rejects unauthenticated requests with 401 and allows authorized capabilities fetch`() {
+        val gate = SecurityGate()
+        val server = CamPhoneServer(
+            port = 0, // ephemeral port
+            usbOnlyLoopback = true,
+            securityGate = gate,
+            capabilitiesJsonProvider = { "{\"deviceModel\":\"TestPhone\"}" },
+            onStartStream = { _, _, _, _, _, _ -> },
+            onStopStream = {},
+            onControlPatch = {},
+            onTallyUpdate = {}
+        )
+        server.start()
+        val port = server.boundPort
+        try {
+            // 1. Unauthenticated request -> HTTP 401
+            Socket("127.0.0.1", port).use { s ->
+                s.getOutputStream().write("GET /v1/capabilities HTTP/1.1\r\nHost: localhost\r\n\r\n".toByteArray())
+                val statusLine = BufferedReader(InputStreamReader(s.getInputStream())).readLine()
+                assertTrue(statusLine.contains("401"))
+            }
+
+            // 2. Authenticated request -> HTTP 200 + JSON
+            Socket("127.0.0.1", port).use { s ->
+                val req = "GET /v1/capabilities HTTP/1.1\r\nAuthorization: Bearer ${gate.currentPin}\r\n\r\n"
+                s.getOutputStream().write(req.toByteArray())
+                val reader = BufferedReader(InputStreamReader(s.getInputStream()))
+                val statusLine = reader.readLine()
+                assertTrue(statusLine.contains("200"))
+            }
+        } finally {
+            server.stop()
+        }
     }
 }
