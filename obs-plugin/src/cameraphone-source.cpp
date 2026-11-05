@@ -205,8 +205,8 @@ struct CameraPhoneSourceContext {
     std::string        status_message = "Pronto. Selecione Cabo USB (Zero-Config) ou IP Wi-Fi.";
     StreamConfig       config{};
     DeviceCapabilities capabilities{};
-    BoundedFrameQueue  video_queue{8};
-    BoundedFrameQueue  audio_queue{16};
+    BoundedFrameQueue  video_queue{60};
+    BoundedFrameQueue  audio_queue{60};
     StreamClient       client{};
     MediaDecoder       decoder{};
     std::atomic<bool>  decode_running{false};

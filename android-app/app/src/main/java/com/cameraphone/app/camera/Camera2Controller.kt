@@ -6,6 +6,7 @@ import android.graphics.SurfaceTexture
 import android.hardware.camera2.*
 import android.hardware.camera2.params.OutputConfiguration
 import android.hardware.camera2.params.SessionConfiguration
+import android.media.MediaCodec
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
@@ -35,7 +36,9 @@ class Camera2Controller(private val context: Context) {
         try {
             val chars = cameraManager.getCameraCharacteristics(lensId)
             val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-            val sizes = map?.getOutputSizes(SurfaceTexture::class.java)?.toList().orEmpty()
+            val codecSizes = map?.getOutputSizes(MediaCodec::class.java)?.toList().orEmpty()
+            val texSizes = map?.getOutputSizes(SurfaceTexture::class.java)?.toList().orEmpty()
+            val sizes = codecSizes.ifEmpty { texSizes }
             val chosenSize = if (sizes.isNotEmpty()) {
                 sizes.firstOrNull { it.width == requestedWidth && it.height == requestedHeight }
                     ?: sizes.filter { it.width <= requestedWidth && it.height <= requestedHeight }
@@ -161,7 +164,12 @@ class Camera2Controller(private val context: Context) {
                             }
                         }
                         override fun onConfigureFailed(session: CameraCaptureSession) {
-                            AppLogger.error("Camera2", "CameraCaptureSession onConfigureFailed! Surface resolution/format rejected by sensor.")
+                            if (hdr10Bit) {
+                                AppLogger.warn("Camera2", "HDR10 capture session rejected by sensor; retrying in SDR mode...")
+                                createCapturePipeline(camera, surface, fpsRange, false, handler)
+                            } else {
+                                AppLogger.error("Camera2", "CameraCaptureSession onConfigureFailed! Surface resolution/format rejected by sensor.")
+                            }
                         }
                     }
                 )

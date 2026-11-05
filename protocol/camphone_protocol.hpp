@@ -119,17 +119,17 @@ struct FramePacket {
     std::vector<uint8_t> data;
 };
 
-// Bounded thread-safe frame queue that NEVER drops FlagCodecConfig packets (SPS/PPS/VPS)
+// Bounded thread-safe frame queue that NEVER drops FlagCodecConfig or FlagKeyframe packets (SPS/PPS/VPS/IDR)
 class BoundedFrameQueue {
 public:
-    explicit BoundedFrameQueue(size_t max_frames = 3) : max_frames_(max_frames) {}
+    explicit BoundedFrameQueue(size_t max_frames = 60) : max_frames_(max_frames) {}
 
     void push(FramePacket pkt) {
         std::lock_guard<std::mutex> lock(mu_);
         if (queue_.size() >= max_frames_) {
-            // Find oldest frame that is NOT a codec config header
+            // Find oldest frame that is neither a codec config header nor an IDR keyframe
             for (auto it = queue_.begin(); it != queue_.end(); ++it) {
-                if ((it->flags & FlagCodecConfig) == 0) {
+                if ((it->flags & (FlagCodecConfig | FlagKeyframe)) == 0) {
                     queue_.erase(it);
                     break;
                 }

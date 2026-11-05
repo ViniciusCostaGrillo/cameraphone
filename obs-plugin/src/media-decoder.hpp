@@ -49,6 +49,8 @@ private:
     void* a_frame_      = nullptr;
     void* a_pkt_        = nullptr;
     uint64_t decoded_frames_count_ = 0;
+    std::string active_codec_name_;
+    std::vector<uint8_t> codec_config_;
 };
 
 } // namespace camphone

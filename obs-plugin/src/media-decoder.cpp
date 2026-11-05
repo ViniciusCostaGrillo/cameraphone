@@ -48,6 +48,7 @@ struct AVPacketPartial {
 };
 
 using fn_avcodec_find_decoder = void* (*)(int id);
+using fn_avcodec_find_decoder_by_name = void* (*)(const char* name);
 using fn_avcodec_alloc_context3 = void* (*)(const void* codec);
 using fn_avcodec_open2 = int (*)(void* ctx, const void* codec, void** options);
 using fn_avcodec_send_packet = int (*)(void* ctx, const void* pkt);
@@ -66,8 +67,22 @@ static void* load_obs_ffmpeg_dll(const char* dll_name) {
     if (HMODULE h = LoadLibraryA(dll_name)) {
         return reinterpret_cast<void*>(h);
     }
+    // Check directory of loaded obs.dll first (supports custom OBS install paths)
+    if (HMODULE hObs = GetModuleHandleA("obs.dll")) {
+        char obs_path[MAX_PATH] = {0};
+        if (GetModuleFileNameA(hObs, obs_path, MAX_PATH) > 0) {
+            std::string dir(obs_path);
+            auto slash = dir.find_last_of("\\/");
+            if (slash != std::string::npos) {
+                std::string candidate = dir.substr(0, slash + 1) + dll_name;
+                if (HMODULE h = LoadLibraryExA(candidate.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH)) {
+                    return reinterpret_cast<void*>(h);
+                }
+            }
+        }
+    }
     std::string full_path = std::string("C:\\Program Files\\obs-studio\\bin\\64bit\\") + dll_name;
-    if (HMODULE h = LoadLibraryA(full_path.c_str())) {
+    if (HMODULE h = LoadLibraryExA(full_path.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH)) {
         return reinterpret_cast<void*>(h);
     }
 #else
@@ -90,6 +105,31 @@ MediaDecoder::~MediaDecoder() {
     shutdown();
 }
 
+static std::string detect_annexb_codec(const std::vector<uint8_t>& buf) {
+    for (size_t i = 0; i + 4 < buf.size() && i < 64; ++i) {
+        size_t nal_idx = 0;
+        if (buf[i] == 0x00 && buf[i + 1] == 0x00 && buf[i + 2] == 0x00 && buf[i + 3] == 0x01) {
+            nal_idx = i + 4;
+        } else if (buf[i] == 0x00 && buf[i + 1] == 0x00 && buf[i + 2] == 0x01) {
+            nal_idx = i + 3;
+        }
+        if (nal_idx > 0 && nal_idx < buf.size()) {
+            uint8_t b = buf[nal_idx];
+            uint8_t h264_type = b & 0x1F;
+            uint8_t hevc_type = (b >> 1) & 0x3F;
+            // HEVC VPS (32), SPS (33), PPS (34) have b=0x40, 0x42, 0x44 where h264_type is 0, 2, 4
+            if (hevc_type == 32 || hevc_type == 33 || hevc_type == 34) {
+                return "hevc";
+            }
+            // H.264 SPS (7), PPS (8) have b=0x67/0x27, 0x68/0x28 where hevc_type is 19/51, 20/52
+            if ((b & 0x80) == 0 && (h264_type == 7 || h264_type == 8)) {
+                return "avc";
+            }
+        }
+    }
+    return "";
+}
+
 bool MediaDecoder::initialize_video(const std::string& codec_name) {
 #ifdef _WIN32
     if (!avcodec_dll_ || !avutil_dll_) {
@@ -97,20 +137,37 @@ bool MediaDecoder::initialize_video(const std::string& codec_name) {
         return false;
     }
     auto find_dec = reinterpret_cast<fn_avcodec_find_decoder>(GetProcAddress(reinterpret_cast<HMODULE>(avcodec_dll_), "avcodec_find_decoder"));
+    auto find_dec_name = reinterpret_cast<fn_avcodec_find_decoder_by_name>(GetProcAddress(reinterpret_cast<HMODULE>(avcodec_dll_), "avcodec_find_decoder_by_name"));
     auto alloc_ctx = reinterpret_cast<fn_avcodec_alloc_context3>(GetProcAddress(reinterpret_cast<HMODULE>(avcodec_dll_), "avcodec_alloc_context3"));
     auto open2 = reinterpret_cast<fn_avcodec_open2>(GetProcAddress(reinterpret_cast<HMODULE>(avcodec_dll_), "avcodec_open2"));
     auto pkt_alloc = reinterpret_cast<fn_av_packet_alloc>(GetProcAddress(reinterpret_cast<HMODULE>(avcodec_dll_), "av_packet_alloc"));
     auto frm_alloc = reinterpret_cast<fn_av_frame_alloc>(GetProcAddress(reinterpret_cast<HMODULE>(avutil_dll_), "av_frame_alloc"));
+    auto free_ctx = reinterpret_cast<fn_avcodec_free_context>(GetProcAddress(reinterpret_cast<HMODULE>(avcodec_dll_), "avcodec_free_context"));
+    auto free_pkt = reinterpret_cast<fn_av_packet_free>(GetProcAddress(reinterpret_cast<HMODULE>(avcodec_dll_), "av_packet_free"));
+    auto free_frm = reinterpret_cast<fn_av_frame_free>(GetProcAddress(reinterpret_cast<HMODULE>(avutil_dll_), "av_frame_free"));
     if (!find_dec || !alloc_ctx || !open2 || !pkt_alloc || !frm_alloc) {
         DiagnosticLogger::error("MediaDecoder", "Failed to resolve avcodec/avutil exports.");
         return false;
     }
 
-    int id = AV_CODEC_ID_HEVC;
-    if (codec_name == "av1") id = AV_CODEC_ID_AV1;
-    else if (codec_name == "avc") id = AV_CODEC_ID_H264;
+    if (v_pkt_ && free_pkt) free_pkt(&v_pkt_);
+    if (v_frame_ && free_frm) free_frm(&v_frame_);
+    if (v_ctx_ && free_ctx) free_ctx(&v_ctx_);
 
-    void* codec = find_dec(id);
+    int id = AV_CODEC_ID_HEVC;
+    const char* ffmpeg_name = "hevc";
+    if (codec_name == "av1") {
+        id = AV_CODEC_ID_AV1;
+        ffmpeg_name = "av1";
+    } else if (codec_name == "avc" || codec_name == "h264") {
+        id = AV_CODEC_ID_H264;
+        ffmpeg_name = "h264";
+    }
+
+    void* codec = find_dec_name ? find_dec_name(ffmpeg_name) : nullptr;
+    if (!codec) {
+        codec = find_dec(id);
+    }
     if (!codec) {
         DiagnosticLogger::error("MediaDecoder", "avcodec_find_decoder failed for codec=" + codec_name);
         return false;
@@ -123,7 +180,8 @@ bool MediaDecoder::initialize_video(const std::string& codec_name) {
     v_pkt_ = pkt_alloc();
     v_frame_ = frm_alloc();
     decoded_frames_count_ = 0;
-    DiagnosticLogger::info("MediaDecoder", "Initialized FFmpeg video decoder for codec=" + codec_name);
+    active_codec_name_ = (codec_name == "h264") ? "avc" : codec_name;
+    DiagnosticLogger::info("MediaDecoder", "Initialized FFmpeg video decoder for codec=" + active_codec_name_ + " (" + ffmpeg_name + ")");
     return v_pkt_ != nullptr && v_frame_ != nullptr;
 #else
     (void)codec_name;
@@ -138,9 +196,37 @@ bool MediaDecoder::decode_video_packet(const FramePacket& pkt, const std::functi
     auto recv_frm = reinterpret_cast<fn_avcodec_receive_frame>(GetProcAddress(reinterpret_cast<HMODULE>(avcodec_dll_), "avcodec_receive_frame"));
     if (!send_pkt || !recv_frm) return false;
 
+    if ((pkt.flags & FlagCodecConfig) != 0 || (pkt.flags & FlagKeyframe) != 0 || decoded_frames_count_ == 0) {
+        std::string detected = detect_annexb_codec(pkt.data);
+        if (!detected.empty() && detected != active_codec_name_) {
+            DiagnosticLogger::warn("MediaDecoder", "Auto-switching video decoder from " + active_codec_name_ + " to " + detected + " based on Annex-B NAL header");
+            initialize_video(detected);
+        }
+    }
+
+    if ((pkt.flags & FlagCodecConfig) != 0 && !pkt.data.empty()) {
+        codec_config_ = pkt.data;
+    }
+
+    std::vector<uint8_t> combined;
+    const uint8_t* send_ptr = pkt.data.data();
+    int send_size = static_cast<int>(pkt.data.size());
+
+    if ((pkt.flags & FlagKeyframe) != 0 && (pkt.flags & FlagCodecConfig) == 0 && !codec_config_.empty()) {
+        bool already_has_config = pkt.data.size() >= codec_config_.size() &&
+            std::equal(codec_config_.begin(), codec_config_.end(), pkt.data.begin());
+        if (!already_has_config) {
+            combined.reserve(codec_config_.size() + pkt.data.size());
+            combined.insert(combined.end(), codec_config_.begin(), codec_config_.end());
+            combined.insert(combined.end(), pkt.data.begin(), pkt.data.end());
+            send_ptr = combined.data();
+            send_size = static_cast<int>(combined.size());
+        }
+    }
+
     auto* avpkt = reinterpret_cast<AVPacketPartial*>(v_pkt_);
-    avpkt->data = const_cast<uint8_t*>(pkt.data.data());
-    avpkt->size = static_cast<int>(pkt.data.size());
+    avpkt->data = const_cast<uint8_t*>(send_ptr);
+    avpkt->size = send_size;
     avpkt->pts  = static_cast<int64_t>(pkt.pts_us);
     avpkt->dts  = static_cast<int64_t>(pkt.pts_us);
 
