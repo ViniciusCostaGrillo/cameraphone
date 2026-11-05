@@ -1,5 +1,6 @@
 package com.cameraphone.obs.protocol
 
+import com.cameraphone.obs.camera.HardwareVideoEncoder
 import com.cameraphone.obs.probe.*
 import org.junit.Assert.*
 import org.junit.Test
@@ -60,5 +61,14 @@ class CamPhonePacketTest {
         assertTrue(jsonStr.contains("\"hlg10\""))
         assertTrue(jsonStr.contains("\"width\":3840"))
         assertTrue(jsonStr.contains("120"))
+    }
+
+    @Test
+    fun `maps codec names to MediaFormat mime types and clamps bitrate`() {
+        assertEquals("video/hevc", HardwareVideoEncoder.resolveMimeType("hevc"))
+        assertEquals("video/av01", HardwareVideoEncoder.resolveMimeType("av1"))
+        assertEquals("video/avc", HardwareVideoEncoder.resolveMimeType("avc"))
+        assertEquals(150_000_000, HardwareVideoEncoder.clampBitrateBps(500_000_000))
+        assertEquals(2_000_000, HardwareVideoEncoder.clampBitrateBps(100_000))
     }
 }
