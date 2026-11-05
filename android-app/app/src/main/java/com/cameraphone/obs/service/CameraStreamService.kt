@@ -19,6 +19,7 @@ import com.cameraphone.obs.probe.CapabilityProbe
 import com.cameraphone.obs.probe.DeviceCapabilityProfile
 import com.cameraphone.obs.security.CameraBounds
 import com.cameraphone.obs.security.SecurityGate
+import com.cameraphone.obs.util.AppLogger
 
 class CameraStreamService : Service() {
 
@@ -38,18 +39,21 @@ class CameraStreamService : Service() {
     private lateinit var capabilities: DeviceCapabilityProfile
 
     @Volatile
-    var usbOnlyMode: Boolean = true
+    var usbOnlyMode: Boolean = false
         private set
 
     var onUiStateChange: ((tally: String, streaming: Boolean, activeInfo: String) -> Unit)? = null
 
     override fun onCreate() {
         super.onCreate()
+        AppLogger.info("Service", "CameraStreamService starting on ${Build.MANUFACTURER} ${Build.MODEL} (SDK ${Build.VERSION.SDK_INT})")
         createNotificationChannel()
-        startForeground(1001, buildNotification("Ready for OBS Studio connection"))
+        startForeground(1001, buildNotification("Ready for OBS Studio connection (USB & Wi-Fi)"))
         capabilities = CapabilityProbe.probeDevice(this)
+        AppLogger.info("Service", "Probed ${capabilities.lenses.size} lenses, codecs=${capabilities.codecs}")
         cameraController = Camera2Controller(this)
-        restartServer(usbOnly = true)
+        // Default to usbOnly = false (0.0.0.0:4748) so BOTH USB Cable (127.0.0.1) and Wi-Fi IP work out-of-the-box!
+        restartServer(usbOnly = false)
     }
 
     fun restartServer(usbOnly: Boolean) {
@@ -100,22 +104,37 @@ class CameraStreamService : Service() {
 
     private fun startHardwarePipeline(lensId: String, w: Int, h: Int, fps: Int, codec: String, hdr: Boolean) {
         stopHardwarePipeline()
-        val bitrate = if (w >= 3840) 80_000_000 else 35_000_000
-        val vEnc = HardwareVideoEncoder(codec, w, h, fps, bitrate, hdr) { hdrBytes, payload ->
-            server?.sendMediaPacket(hdrBytes, payload)
-        }
-        val surface = vEnc.start()
-        videoEncoder = vEnc
-        cameraController?.startSession(lensId, surface, fps, hdr)
+        val cam = cameraController ?: return
+        try {
+            val (actualSize, actualFpsRange) = cam.pickSupportedResolutionAndFps(lensId, w, h, fps)
+            val bitrate = if (actualSize.width >= 3840) 80_000_000 else 30_000_000
+            val vEnc = HardwareVideoEncoder(
+                codec,
+                actualSize.width,
+                actualSize.height,
+                actualFpsRange.upper,
+                bitrate,
+                hdr
+            ) { hdrBytes, payload ->
+                server?.sendMediaPacket(hdrBytes, payload)
+            }
+            val surface = vEnc.start()
+            videoEncoder = vEnc
+            cam.startSession(lensId, surface, actualFpsRange, hdr)
 
-        val aEnc = HardwareAudioEncoder { hdrBytes, payload ->
-            server?.sendMediaPacket(hdrBytes, payload)
-        }
-        aEnc.start()
-        audioEncoder = aEnc
+            val aEnc = HardwareAudioEncoder { hdrBytes, payload ->
+                server?.sendMediaPacket(hdrBytes, payload)
+            }
+            aEnc.start()
+            audioEncoder = aEnc
 
-        val summary = "${w}x${h} @ ${fps}fps • ${codec.uppercase()}${if (hdr) " HDR10" else ""}"
-        onUiStateChange?.invoke("program", true, summary)
+            val summary = "${actualSize.width}x${actualSize.height} @ ${actualFpsRange.upper}fps • ${codec.uppercase()}${if (hdr) " HDR10" else ""}"
+            AppLogger.info("Pipeline", "Hardware pipeline ACTIVE: $summary")
+            onUiStateChange?.invoke("program", true, summary)
+        } catch (e: Throwable) {
+            AppLogger.error("Pipeline", "Failed to start hardware pipeline", e)
+            onUiStateChange?.invoke("idle", false, "Erro HW: ${e.message}")
+        }
     }
 
     private fun stopHardwarePipeline() {
@@ -135,14 +154,22 @@ class CameraStreamService : Service() {
             setPort(port)
         }
         val listener = object : NsdManager.RegistrationListener {
-            override fun onServiceRegistered(serviceInfo: NsdServiceInfo?) {}
-            override fun onRegistrationFailed(serviceInfo: NsdServiceInfo?, errorCode: Int) {}
+            override fun onServiceRegistered(serviceInfo: NsdServiceInfo?) {
+                AppLogger.info("mDNS", "Registered _cameraphoneobs._tcp on port $port")
+            }
+            override fun onRegistrationFailed(serviceInfo: NsdServiceInfo?, errorCode: Int) {
+                AppLogger.warn("mDNS", "Registration failed code=$errorCode")
+            }
             override fun onServiceUnregistered(serviceInfo: NsdServiceInfo?) {}
             override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo?, errorCode: Int) {}
         }
-        mgr.registerService(info, NsdManager.PROTOCOL_DNS_SD, listener)
-        nsdManager = mgr
-        nsdListener = listener
+        try {
+            mgr.registerService(info, NsdManager.PROTOCOL_DNS_SD, listener)
+            nsdManager = mgr
+            nsdListener = listener
+        } catch (e: Throwable) {
+            AppLogger.warn("mDNS", "Could not register NSD service: ${e.message}")
+        }
     }
 
     private fun unregisterMdns() {

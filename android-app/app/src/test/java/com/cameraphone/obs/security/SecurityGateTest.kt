@@ -116,6 +116,17 @@ class SecurityGateTest {
 
             // 4. Wi-Fi LAN IP attempting Bearer usb-zero-config -> MUST be rejected (Unauthorized)
             assertEquals(AuthResult.Unauthorized, gate.verifyRequest("192.168.1.50", "Bearer usb-zero-config"))
+
+            // 5. Integrated Diagnostic Logs endpoint (/v1/logs) -> HTTP 200 + JSON logs array
+            Socket("127.0.0.1", port).use { s ->
+                val req = "GET /v1/logs HTTP/1.1\r\nAuthorization: Bearer usb-zero-config\r\n\r\n"
+                s.getOutputStream().write(req.toByteArray())
+                val reader = BufferedReader(InputStreamReader(s.getInputStream()))
+                val statusLine = reader.readLine()
+                assertTrue(statusLine.contains("200"))
+                val fullResp = reader.readText()
+                assertTrue(fullResp.contains("\"logs\":["))
+            }
         } finally {
             server.stop()
         }

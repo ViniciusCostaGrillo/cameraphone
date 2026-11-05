@@ -1,4 +1,5 @@
 #include "media-decoder.hpp"
+#include "diagnostic-logger.hpp"
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -17,14 +18,26 @@ enum AVCodecID {
     AV_CODEC_ID_AAC  = 86018
 };
 
+// Exact FFmpeg 7.x / avutil-60 AVFrame layout verified via REA + Ghidra on droidcam-obs.dll (FUN_180100c30):
+//   0x00: uint8_t* data[8]         (64 bytes)
+//   0x40: int linesize[8]          (32 bytes)
+//   0x60: uint8_t** extended_data  (8 bytes)
+//   0x68: int width                (4 bytes)
+//   0x6C: int height               (4 bytes)
+//   0x70: int nb_samples           (4 bytes)
+//   0x74: int format               (4 bytes) -> AVPixelFormat / AVSampleFormat
 struct AVFramePartial {
     uint8_t* data[8];
     int      linesize[8];
     uint8_t** extended_data;
-    int      width, height;
+    int      width;
+    int      height;
     int      nb_samples;
     int      format;
 };
+static_assert(offsetof(AVFramePartial, width) == 0x68, "AVFrame.width must be at offset 0x68");
+static_assert(offsetof(AVFramePartial, height) == 0x6C, "AVFrame.height must be at offset 0x6C");
+static_assert(offsetof(AVFramePartial, format) == 0x74, "AVFrame.format must be at offset 0x74");
 
 struct AVPacketPartial {
     void*    buf;
@@ -45,41 +58,72 @@ using fn_av_packet_free = void (*)(void** pkt);
 using fn_av_frame_alloc = void* (*)();
 using fn_av_frame_free = void (*)(void** frame);
 
+static void* load_obs_ffmpeg_dll(const char* dll_name) {
+#ifdef _WIN32
+    if (HMODULE h = GetModuleHandleA(dll_name)) {
+        return reinterpret_cast<void*>(h);
+    }
+    if (HMODULE h = LoadLibraryA(dll_name)) {
+        return reinterpret_cast<void*>(h);
+    }
+    std::string full_path = std::string("C:\\Program Files\\obs-studio\\bin\\64bit\\") + dll_name;
+    if (HMODULE h = LoadLibraryA(full_path.c_str())) {
+        return reinterpret_cast<void*>(h);
+    }
+#else
+    (void)dll_name;
+#endif
+    return nullptr;
+}
+
 MediaDecoder::MediaDecoder() {
 #ifdef _WIN32
-    avutil_dll_  = reinterpret_cast<void*>(LoadLibraryA("avutil-60.dll"));
-    avcodec_dll_ = reinterpret_cast<void*>(LoadLibraryA("avcodec-62.dll"));
+    avutil_dll_  = load_obs_ffmpeg_dll("avutil-60.dll");
+    avcodec_dll_ = load_obs_ffmpeg_dll("avcodec-62.dll");
+    if (!avutil_dll_ || !avcodec_dll_) {
+        DiagnosticLogger::error("MediaDecoder", "Failed to load avutil-60.dll or avcodec-62.dll from OBS Studio!");
+    }
 #endif
 }
 
 MediaDecoder::~MediaDecoder() {
     shutdown();
-#ifdef _WIN32
-    if (avcodec_dll_) FreeLibrary(reinterpret_cast<HMODULE>(avcodec_dll_));
-    if (avutil_dll_)  FreeLibrary(reinterpret_cast<HMODULE>(avutil_dll_));
-#endif
 }
 
 bool MediaDecoder::initialize_video(const std::string& codec_name) {
 #ifdef _WIN32
-    if (!avcodec_dll_ || !avutil_dll_) return false;
+    if (!avcodec_dll_ || !avutil_dll_) {
+        DiagnosticLogger::error("MediaDecoder", "Cannot initialize video: FFmpeg DLLs not loaded.");
+        return false;
+    }
     auto find_dec = reinterpret_cast<fn_avcodec_find_decoder>(GetProcAddress(reinterpret_cast<HMODULE>(avcodec_dll_), "avcodec_find_decoder"));
     auto alloc_ctx = reinterpret_cast<fn_avcodec_alloc_context3>(GetProcAddress(reinterpret_cast<HMODULE>(avcodec_dll_), "avcodec_alloc_context3"));
     auto open2 = reinterpret_cast<fn_avcodec_open2>(GetProcAddress(reinterpret_cast<HMODULE>(avcodec_dll_), "avcodec_open2"));
     auto pkt_alloc = reinterpret_cast<fn_av_packet_alloc>(GetProcAddress(reinterpret_cast<HMODULE>(avcodec_dll_), "av_packet_alloc"));
     auto frm_alloc = reinterpret_cast<fn_av_frame_alloc>(GetProcAddress(reinterpret_cast<HMODULE>(avutil_dll_), "av_frame_alloc"));
-    if (!find_dec || !alloc_ctx || !open2 || !pkt_alloc || !frm_alloc) return false;
+    if (!find_dec || !alloc_ctx || !open2 || !pkt_alloc || !frm_alloc) {
+        DiagnosticLogger::error("MediaDecoder", "Failed to resolve avcodec/avutil exports.");
+        return false;
+    }
 
     int id = AV_CODEC_ID_HEVC;
     if (codec_name == "av1") id = AV_CODEC_ID_AV1;
     else if (codec_name == "avc") id = AV_CODEC_ID_H264;
 
     void* codec = find_dec(id);
-    if (!codec) return false;
+    if (!codec) {
+        DiagnosticLogger::error("MediaDecoder", "avcodec_find_decoder failed for codec=" + codec_name);
+        return false;
+    }
     v_ctx_ = alloc_ctx(codec);
-    if (!v_ctx_ || open2(v_ctx_, codec, nullptr) < 0) return false;
+    if (!v_ctx_ || open2(v_ctx_, codec, nullptr) < 0) {
+        DiagnosticLogger::error("MediaDecoder", "avcodec_open2 failed for codec=" + codec_name);
+        return false;
+    }
     v_pkt_ = pkt_alloc();
     v_frame_ = frm_alloc();
+    decoded_frames_count_ = 0;
+    DiagnosticLogger::info("MediaDecoder", "Initialized FFmpeg video decoder for codec=" + codec_name);
     return v_pkt_ != nullptr && v_frame_ != nullptr;
 #else
     (void)codec_name;
@@ -98,18 +142,34 @@ bool MediaDecoder::decode_video_packet(const FramePacket& pkt, const std::functi
     avpkt->data = const_cast<uint8_t*>(pkt.data.data());
     avpkt->size = static_cast<int>(pkt.data.size());
     avpkt->pts  = static_cast<int64_t>(pkt.pts_us);
+    avpkt->dts  = static_cast<int64_t>(pkt.pts_us);
 
-    if (send_pkt(v_ctx_, v_pkt_) < 0) return false;
+    int ret = send_pkt(v_ctx_, v_pkt_);
+    if (ret < 0) {
+        DiagnosticLogger::warn("MediaDecoder", "avcodec_send_packet returned " + std::to_string(ret) + " (pkt size=" + std::to_string(pkt.data.size()) + ")");
+        return false;
+    }
     while (recv_frm(v_ctx_, v_frame_) == 0) {
         auto* f = reinterpret_cast<AVFramePartial*>(v_frame_);
         DecodedVideoFrame out{};
         out.width = f->width;
         out.height = f->height;
         out.pts_ns = pkt.pts_us * 1000ULL;
+        out.av_pix_fmt = f->format;
         out.is_hdr_p010 = (pkt.flags & FlagHdr10Bit) != 0;
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < 8; ++i) {
             out.data[i] = f->data[i];
             out.linesize[i] = f->linesize[i];
+        }
+        ++decoded_frames_count_;
+        if (decoded_frames_count_ == 1 || decoded_frames_count_ % 120 == 0) {
+            DiagnosticLogger::info(
+                "MediaDecoder",
+                "Decoded video frame #" + std::to_string(decoded_frames_count_) +
+                " (" + std::to_string(out.width) + "x" + std::to_string(out.height) +
+                ", av_pix_fmt=" + std::to_string(out.av_pix_fmt) +
+                ", linesize0=" + std::to_string(out.linesize[0]) + ")"
+            );
         }
         on_frame(out);
     }

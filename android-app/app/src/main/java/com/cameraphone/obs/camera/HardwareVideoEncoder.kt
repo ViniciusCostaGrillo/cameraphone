@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.Surface
 import com.cameraphone.obs.protocol.CamPhonePacket
+import com.cameraphone.obs.util.AppLogger
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -24,28 +25,57 @@ class HardwareVideoEncoder(
         private set
     private val running = AtomicBoolean(false)
     private var drainThread: Thread? = null
+    private var packetsSent: Long = 0
 
     fun start(): Surface {
-        val mime = resolveMimeType(codecName)
-        val format = MediaFormat.createVideoFormat(mime, width, height).apply {
-            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-            setInteger(MediaFormat.KEY_BIT_RATE, clampBitrateBps(bitrateBps))
-            setInteger(MediaFormat.KEY_FRAME_RATE, fps)
-            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1) // 1s GOP for fast OBS recovery
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                setInteger(MediaFormat.KEY_PREPEND_HEADER_TO_SYNC_FRAMES, 1)
-            }
-            if (hdr10Bit && mime == MediaFormat.MIMETYPE_VIDEO_HEVC) {
-                setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10)
-                setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT2020)
-                setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_HLG)
+        var mime = resolveMimeType(codecName)
+        var mc: MediaCodec? = null
+        var surface: Surface? = null
+
+        val attempts = listOf(
+            Triple(mime, width, height),
+            Triple(MediaFormat.MIMETYPE_VIDEO_HEVC, 1920, 1080),
+            Triple(MediaFormat.MIMETYPE_VIDEO_AVC, 1920, 1080)
+        )
+
+        var lastErr: Throwable? = null
+        for ((tryMime, tryW, tryH) in attempts) {
+            try {
+                val tryFps = if (tryW < width) 30 else fps
+                val tryBitrate = if (tryW >= 3840) clampBitrateBps(bitrateBps) else 20_000_000
+                val format = MediaFormat.createVideoFormat(tryMime, tryW, tryH).apply {
+                    setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+                    setInteger(MediaFormat.KEY_BIT_RATE, tryBitrate)
+                    setInteger(MediaFormat.KEY_FRAME_RATE, tryFps)
+                    setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        setInteger(MediaFormat.KEY_PREPEND_HEADER_TO_SYNC_FRAMES, 1)
+                    }
+                    if (hdr10Bit && tryMime == MediaFormat.MIMETYPE_VIDEO_HEVC && tryW == width) {
+                        setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10)
+                        setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT2020)
+                        setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_HLG)
+                    }
+                }
+                val candidate = MediaCodec.createEncoderByType(tryMime)
+                candidate.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+                val surf = candidate.createInputSurface()
+                candidate.start()
+                mc = candidate
+                surface = surf
+                mime = tryMime
+                AppLogger.info("VideoEncoder", "Started HW encoder: mime=$tryMime, ${tryW}x${tryH}@${tryFps}fps, bitrate=${tryBitrate / 1_000_000}Mbps")
+                break
+            } catch (e: Throwable) {
+                lastErr = e
+                AppLogger.warn("VideoEncoder", "Encoder config failed for $tryMime ${tryW}x${tryH}: ${e.message}")
             }
         }
 
-        val mc = MediaCodec.createEncoderByType(mime)
-        mc.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-        val surface = mc.createInputSurface()
-        mc.start()
+        if (mc == null || surface == null) {
+            AppLogger.error("VideoEncoder", "All HW encoder configurations failed!", lastErr)
+            throw IllegalStateException("Unable to configure MediaCodec video encoder", lastErr)
+        }
 
         codec = mc
         inputSurface = surface
@@ -69,7 +99,10 @@ class HardwareVideoEncoder(
         while (running.get()) {
             val outIndex = try {
                 mc.dequeueOutputBuffer(info, 10_000L)
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                if (running.get()) {
+                    AppLogger.error("VideoEncoder", "dequeueOutputBuffer exception", e)
+                }
                 break
             }
             if (outIndex >= 0) {
@@ -97,6 +130,10 @@ class HardwareVideoEncoder(
                         ptsUs = info.presentationTimeUs,
                         payloadSize = payload.size
                     )
+                    packetsSent++
+                    if (packetsSent == 1L || packetsSent % 120L == 0L) {
+                        AppLogger.info("VideoEncoder", "Encoded packet #$packetsSent (${payload.size} bytes, flags=$flags)")
+                    }
                     onPacket(hdr, payload)
                 }
                 try {

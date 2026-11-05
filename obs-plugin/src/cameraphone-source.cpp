@@ -1,4 +1,5 @@
 #include "cameraphone-source.hpp"
+#include "diagnostic-logger.hpp"
 #include "discovery-manager.hpp"
 #include "media-decoder.hpp"
 #include "stream-client.hpp"
@@ -38,7 +39,21 @@ enum obs_combo_type { OBS_COMBO_TYPE_INVALID, OBS_COMBO_TYPE_EDITABLE, OBS_COMBO
 enum obs_combo_format { OBS_COMBO_FORMAT_INVALID, OBS_COMBO_FORMAT_INT, OBS_COMBO_FORMAT_FLOAT, OBS_COMBO_FORMAT_STRING };
 enum obs_text_type { OBS_TEXT_DEFAULT, OBS_TEXT_PASSWORD, OBS_TEXT_MULTILINE, OBS_TEXT_INFO };
 
-struct obs_source_frame2_minimal {
+// Exact OBS Studio v30 obs_source_frame2 ABI verified via REA + Ghidra on droidcam-obs.dll (FUN_180100c30):
+//   0x00: uint8_t* data[8]         (64 bytes)
+//   0x40: uint32_t linesize[8]     (32 bytes)
+//   0x60: uint32_t width           (4 bytes)
+//   0x64: uint32_t height          (4 bytes)
+//   0x68: uint64_t timestamp       (8 bytes)
+//   0x70: int format               (4 bytes -> video_format)
+//   0x74: int range                (4 bytes -> video_range_type: 1=PARTIAL, 2=FULL)
+//   0x78: float color_matrix[16]   (64 bytes)
+//   0xB8: float color_range_min[3] (12 bytes)
+//   0xC4: float color_range_max[3] (12 bytes)
+//   0xD0: bool flip                (1 byte)
+//   0xD1: uint8_t flags            (1 byte)
+//   0xD2: uint8_t trc              (1 byte -> video_trc: 1=SRGB/709, 2=PQ, 3=HLG)
+struct obs_source_frame2_v30 {
     uint8_t* data[8];
     uint32_t linesize[8];
     uint32_t width;
@@ -53,6 +68,15 @@ struct obs_source_frame2_minimal {
     uint8_t  flags;
     uint8_t  trc;
 };
+static_assert(offsetof(obs_source_frame2_v30, width) == 0x60, "obs_source_frame2_v30.width must be at 0x60");
+static_assert(offsetof(obs_source_frame2_v30, height) == 0x64, "obs_source_frame2_v30.height must be at 0x64");
+static_assert(offsetof(obs_source_frame2_v30, timestamp) == 0x68, "obs_source_frame2_v30.timestamp must be at 0x68");
+static_assert(offsetof(obs_source_frame2_v30, format) == 0x70, "obs_source_frame2_v30.format must be at 0x70");
+static_assert(offsetof(obs_source_frame2_v30, range) == 0x74, "obs_source_frame2_v30.range must be at 0x74");
+static_assert(offsetof(obs_source_frame2_v30, color_matrix) == 0x78, "obs_source_frame2_v30.color_matrix must be at 0x78");
+static_assert(offsetof(obs_source_frame2_v30, color_range_min) == 0xB8, "obs_source_frame2_v30.color_range_min must be at 0xB8");
+static_assert(offsetof(obs_source_frame2_v30, color_range_max) == 0xC4, "obs_source_frame2_v30.color_range_max must be at 0xC4");
+static_assert(offsetof(obs_source_frame2_v30, trc) == 0xD2, "obs_source_frame2_v30.trc must be at 0xD2");
 
 // Exact 0x198 (408-byte) OBS Studio v30 obs_source_info ABI verified via REA + Ghidra on droidcam-obs.dll
 struct obs_source_info_v30 {
@@ -76,6 +100,32 @@ struct obs_source_info_v30 {
     uint8_t     _reserved_0x124_to_0x198[0x198 - 0x124];              // 0x124..0x197
 };
 static_assert(sizeof(obs_source_info_v30) == 0x198, "obs_source_info_v30 must be exactly 0x198 (408) bytes");
+
+// Map FFmpeg AVPixelFormat -> OBS video_format (verified from droidcam-obs.dll FUN_180100c30)
+static int map_av_pix_fmt_to_obs_video_format(int av_pix_fmt) {
+    switch (av_pix_fmt) {
+    case 0:    // AV_PIX_FMT_YUV420P
+    case 12:   // AV_PIX_FMT_YUVJ420P
+        return 1;  // VIDEO_FORMAT_I420
+    case 23:   // AV_PIX_FMT_NV12
+        return 2;  // VIDEO_FORMAT_NV12
+    case 1:    // AV_PIX_FMT_YUYV422
+        return 4;  // VIDEO_FORMAT_YUY2
+    case 4:    // AV_PIX_FMT_YUV422P
+    case 13:   // AV_PIX_FMT_YUVJ422P
+        return 12; // VIDEO_FORMAT_I422
+    case 15:   // AV_PIX_FMT_UYVY422
+        return 5;  // VIDEO_FORMAT_UYVY
+    case 62:   // AV_PIX_FMT_YUV420P10LE
+        return 17; // VIDEO_FORMAT_I010
+    case 64:   // AV_PIX_FMT_YUV422P10LE
+        return 19; // VIDEO_FORMAT_I210
+    case 158:  // AV_PIX_FMT_P010LE
+        return 18; // VIDEO_FORMAT_P010
+    default:
+        return 1;  // Default to VIDEO_FORMAT_I420
+    }
+}
 
 // Dynamic function table resolved from obs.dll at runtime
 struct ObsApi {
@@ -103,8 +153,9 @@ struct ObsApi {
     void              (*obs_data_set_default_int)(obs_data_t*, const char*, long long) = nullptr;
     obs_data_t*       (*obs_source_get_settings)(obs_source_t*) = nullptr;
     void              (*obs_data_release)(obs_data_t*) = nullptr;
-    void              (*obs_source_output_video2)(obs_source_t*, const obs_source_frame2_minimal*) = nullptr;
-    void              (*obs_source_output_video)(obs_source_t*, const obs_source_frame2_minimal*) = nullptr;
+    void              (*obs_source_output_video2)(obs_source_t*, const obs_source_frame2_v30*) = nullptr;
+    void              (*obs_source_output_video)(obs_source_t*, const obs_source_frame2_v30*) = nullptr;
+    bool              (*video_format_get_parameters_for_format)(int colorspace, int range, int format, float* matrix, float* min_range, float* max_range) = nullptr;
     void              (*obs_register_source_s)(const obs_source_info_v30*, size_t) = nullptr;
 
     static ObsApi& instance() {
@@ -139,6 +190,7 @@ struct ObsApi {
             a.obs_data_release = reinterpret_cast<decltype(a.obs_data_release)>(GetProcAddress(h, "obs_data_release"));
             a.obs_source_output_video2 = reinterpret_cast<decltype(a.obs_source_output_video2)>(GetProcAddress(h, "obs_source_output_video2"));
             a.obs_source_output_video = reinterpret_cast<decltype(a.obs_source_output_video)>(GetProcAddress(h, "obs_source_output_video"));
+            a.video_format_get_parameters_for_format = reinterpret_cast<decltype(a.video_format_get_parameters_for_format)>(GetProcAddress(h, "video_format_get_parameters_for_format"));
             a.obs_register_source_s = reinterpret_cast<decltype(a.obs_register_source_s)>(GetProcAddress(h, "obs_register_source_s"));
 #endif
             return a;
@@ -153,8 +205,8 @@ struct CameraPhoneSourceContext {
     std::string        status_message = "Pronto. Selecione Cabo USB (Zero-Config) ou IP Wi-Fi.";
     StreamConfig       config{};
     DeviceCapabilities capabilities{};
-    BoundedFrameQueue  video_queue{3};
-    BoundedFrameQueue  audio_queue{8};
+    BoundedFrameQueue  video_queue{8};
+    BoundedFrameQueue  audio_queue{16};
     StreamClient       client{};
     MediaDecoder       decoder{};
     std::atomic<bool>  decode_running{false};
@@ -169,6 +221,8 @@ struct CameraPhoneSourceContext {
                 config.pin = "usb-zero-config";
             }
         }
+        DiagnosticLogger::info("OBS-Source", "Starting pipeline: mode=" + conn_mode + " host=" + config.host + ":" + std::to_string(config.port) + " res=" + std::to_string(config.width) + "x" + std::to_string(config.height) + "@" + std::to_string(config.fps) + " codec=" + config.codec);
+
         decoder.initialize_video(config.codec);
         decoder.initialize_audio();
         if (client.fetch_capabilities(config.host, config.port, config.pin, capabilities)) {
@@ -179,24 +233,67 @@ struct CameraPhoneSourceContext {
         decode_running.store(true);
         decode_thread = std::thread([this]() {
             auto& api = ObsApi::instance();
+            uint64_t rendered_frames = 0;
             while (decode_running.load()) {
                 auto vpkt = video_queue.pop();
                 if (vpkt.has_value()) {
                     decoder.decode_video_packet(*vpkt, [&](const DecodedVideoFrame& vf) {
                         if (source && (api.obs_source_output_video2 || api.obs_source_output_video)) {
-                            obs_source_frame2_minimal of{};
-                            for (int i = 0; i < 4; ++i) {
+                            obs_source_frame2_v30 of{};
+                            std::memset(&of, 0, sizeof(of));
+                            for (int i = 0; i < 8; ++i) {
                                 of.data[i] = vf.data[i];
                                 of.linesize[i] = static_cast<uint32_t>(vf.linesize[i]);
                             }
                             of.width = static_cast<uint32_t>(vf.width);
                             of.height = static_cast<uint32_t>(vf.height);
                             of.timestamp = vf.pts_ns;
-                            of.format = vf.is_hdr_p010 ? 20 : 2; // VIDEO_FORMAT_P010 or VIDEO_FORMAT_NV12
+                            of.format = map_av_pix_fmt_to_obs_video_format(vf.av_pix_fmt);
+                            of.range = 1; // VIDEO_RANGE_PARTIAL
+                            of.trc = vf.is_hdr_p010 ? 3 : 1; // 3 = VIDEO_TRC_HLG, 1 = VIDEO_TRC_DEFAULT (Rec.709)
+
+                            // Populate color_matrix, color_range_min, color_range_max via OBS's video_format_get_parameters_for_format
+                            // exactly as droidcam-obs.dll (FUN_180100c30) does so the OBS GPU shader does NOT render black!
+                            int colorspace = vf.is_hdr_p010 ? 4 : 2; // 4 = VIDEO_CS_2100_HLG, 2 = VIDEO_CS_709
+                            if (api.video_format_get_parameters_for_format) {
+                                api.video_format_get_parameters_for_format(
+                                    colorspace,
+                                    of.range,
+                                    of.format,
+                                    of.color_matrix,
+                                    of.color_range_min,
+                                    of.color_range_max
+                                );
+                            } else {
+                                // Fallback Rec.709 partial range matrix if symbol unavailable
+                                const float rec709[16] = {
+                                    1.164384f,  0.000000f,  1.792741f, -0.972945f,
+                                    1.164384f, -0.213249f, -0.532909f,  0.301483f,
+                                    1.164384f,  2.112402f,  0.000000f, -1.133402f,
+                                    0.000000f,  0.000000f,  0.000000f,  1.000000f
+                                };
+                                std::memcpy(of.color_matrix, rec709, sizeof(rec709));
+                                of.color_range_min[0] = 0.062745f;
+                                of.color_range_min[1] = 0.062745f;
+                                of.color_range_min[2] = 0.062745f;
+                                of.color_range_max[0] = 0.921569f;
+                                of.color_range_max[1] = 0.941176f;
+                                of.color_range_max[2] = 0.941176f;
+                            }
+
                             if (api.obs_source_output_video2) {
                                 api.obs_source_output_video2(source, &of);
                             } else {
                                 api.obs_source_output_video(source, &of);
+                            }
+                            ++rendered_frames;
+                            if (rendered_frames == 1 || rendered_frames % 120 == 0) {
+                                DiagnosticLogger::info(
+                                    "OBS-Source",
+                                    "Output video frame #" + std::to_string(rendered_frames) +
+                                    " to OBS (" + std::to_string(of.width) + "x" + std::to_string(of.height) +
+                                    ", obs_fmt=" + std::to_string(of.format) + ")"
+                                );
                             }
                         }
                     });
@@ -228,7 +325,7 @@ static void source_get_defaults(obs_data_t* settings) {
     api.obs_data_set_default_string(settings, "usb_device", "127.0.0.1");
     api.obs_data_set_default_string(settings, "wifi_ip", "192.168.1.100");
     api.obs_data_set_default_string(settings, "pin", "");
-    api.obs_data_set_default_string(settings, "resolution", "3840x2160");
+    api.obs_data_set_default_string(settings, "resolution", "1920x1080");
     api.obs_data_set_default_string(settings, "fps", "60");
     api.obs_data_set_default_string(settings, "codec", "hevc");
     api.obs_data_set_default_string(settings, "lens", "0");
@@ -249,7 +346,6 @@ static bool on_conn_mode_modified(void* priv, obs_properties_t* props, obs_prope
         api.obs_property_set_visible(p_usb, is_usb);
     }
     if (auto* p_btn_apk = api.obs_properties_get(props, "btn_install_apk")) {
-        // Button "Instalar APK no Celular" is ONLY active/visible when USB Cable mode is selected
         api.obs_property_set_visible(p_btn_apk, is_usb);
         if (api.obs_property_set_enabled) {
             api.obs_property_set_enabled(p_btn_apk, is_usb);
@@ -259,7 +355,6 @@ static bool on_conn_mode_modified(void* priv, obs_properties_t* props, obs_prope
         api.obs_property_set_visible(p_wifi, !is_usb);
     }
     if (auto* p_pin = api.obs_properties_get(props, "pin")) {
-        // In USB mode, connection is Zero-Config (no PIN needed); in Wi-Fi mode, show PIN field
         api.obs_property_set_visible(p_pin, !is_usb);
     }
     (void)priv;
@@ -271,6 +366,7 @@ static bool on_install_apk_clicked(obs_properties_t* props, obs_property_t*, voi
     auto& api = ObsApi::instance();
     std::string msg;
     bool ok = DiscoveryManager::install_apk_and_launch_usb(msg, 4748, 4748);
+    DiagnosticLogger::info("OBS-UI", "Install APK button clicked -> " + msg);
     if (ctx) {
         ctx->status_message = msg;
         if (ok) {
@@ -285,11 +381,8 @@ static bool on_install_apk_clicked(obs_properties_t* props, obs_property_t*, voi
                 ok ? "CameraPhone OBS - APK Instalado via Cabo USB" : "CameraPhone OBS - Aviso USB",
                 ok ? (MB_OK | MB_ICONINFORMATION) : (MB_OK | MB_ICONWARNING));
 #endif
-    if (api.obs_properties_get && api.obs_property_set_description) {
-        if (auto* st = api.obs_properties_get(props, "status_info")) {
-            api.obs_property_set_description(st, msg.c_str());
-        }
-    }
+    (void)props;
+    (void)api;
     return true;
 }
 
@@ -313,12 +406,29 @@ static bool on_connect_refresh_clicked(obs_properties_t* props, obs_property_t*,
     }
 
     ctx->start_pipeline();
-    if (api.obs_properties_get && api.obs_property_set_description) {
-        if (auto* st = api.obs_properties_get(props, "status_info")) {
-            api.obs_property_set_description(st, ctx->status_message.c_str());
+    return true;
+}
+
+static bool on_show_logs_clicked(obs_properties_t*, obs_property_t*, void* data) {
+    auto* ctx = static_cast<CameraPhoneSourceContext*>(data);
+    std::ostringstream report;
+    report << "=== LOGS LOCAIS DO PLUGIN OBS (%APPDATA%\\CameraPhoneOBS\\cameraphone-obs.log) ===\r\n"
+           << DiagnosticLogger::read_tail(4096) << "\r\n";
+
+    if (ctx) {
+        std::string apk_logs;
+        if (ctx->client.fetch_remote_logs(ctx->config.host, ctx->config.port, ctx->config.pin, apk_logs)) {
+            report << "\r\n=== LOGS REMOTOS DO APK NO CELULAR (" << ctx->config.host << ":4748) ===\r\n"
+                   << apk_logs;
+        } else {
+            report << "\r\n=== LOGS REMOTOS DO APK ===\r\n(Nao foi possivel consultar /v1/logs em "
+                   << ctx->config.host << ":4748)";
         }
     }
-    return true;
+#ifdef _WIN32
+    MessageBoxA(nullptr, report.str().c_str(), "CameraPhone OBS - Diagnostico Integrado (PC + APK)", MB_OK | MB_ICONINFORMATION);
+#endif
+    return false;
 }
 
 static obs_properties_t* source_get_properties(void* data) {
@@ -359,11 +469,14 @@ static obs_properties_t* source_get_properties(void* data) {
     api.obs_properties_add_text(props, "wifi_ip", "IP do Celular (Wi-Fi)", OBS_TEXT_DEFAULT);
     api.obs_properties_add_text(props, "pin", "PIN de Seguranca Wi-Fi (6 digitos no App)", OBS_TEXT_PASSWORD);
 
-    // 5. Connect / Refresh Button
+    // 5. Connect / Refresh Button + Diagnostic Logs Button
     if (api.obs_properties_add_button2) {
         api.obs_properties_add_button2(
             props, "btn_connect", "Conectar / Atualizar Camera Agora",
             on_connect_refresh_clicked, ctx);
+        api.obs_properties_add_button2(
+            props, "btn_logs", "Ver Logs de Diagnostico (OBS + Celular)",
+            on_show_logs_clicked, ctx);
     }
 
     // 6. Camera Hardware & Lens Controls
@@ -380,19 +493,19 @@ static obs_properties_t* source_get_properties(void* data) {
     }
 
     auto* res_list = api.obs_properties_add_list(props, "resolution", "Resolucao", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
-    api.obs_property_list_add_string(res_list, "4K UHD (3840x2160)", "3840x2160");
-    api.obs_property_list_add_string(res_list, "QHD 1440p (2560x1440)", "2560x1440");
     api.obs_property_list_add_string(res_list, "Full HD 1080p (1920x1080)", "1920x1080");
+    api.obs_property_list_add_string(res_list, "QHD 1440p (2560x1440)", "2560x1440");
+    api.obs_property_list_add_string(res_list, "4K UHD (3840x2160)", "3840x2160");
 
     auto* fps_list = api.obs_properties_add_list(props, "fps", "Taxa de Quadros (FPS)", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
-    api.obs_property_list_add_string(fps_list, "120 FPS (High-Speed)", "120");
     api.obs_property_list_add_string(fps_list, "60 FPS", "60");
     api.obs_property_list_add_string(fps_list, "30 FPS", "30");
+    api.obs_property_list_add_string(fps_list, "120 FPS (High-Speed)", "120");
 
     auto* codec_list = api.obs_properties_add_list(props, "codec", "Codec de Hardware", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
     api.obs_property_list_add_string(codec_list, "HEVC (H.265 Hardware)", "hevc");
-    api.obs_property_list_add_string(codec_list, "AV1 (Hardware)", "av1");
     api.obs_property_list_add_string(codec_list, "AVC (H.264 Hardware)", "avc");
+    api.obs_property_list_add_string(codec_list, "AV1 (Hardware)", "av1");
 
     api.obs_properties_add_bool(props, "hdr", "HDR 10-bit (HLG / BT.2020)");
     api.obs_properties_add_float_slider(props, "zoom", "Zoom Optico/Hibrido", 1.0, 10.0, 0.1);
@@ -429,17 +542,23 @@ static void source_update(void* data, obs_data_t* settings) {
     if (new_mode == "wifi") {
         new_host = (wifi_ip && *wifi_ip) ? wifi_ip : "192.168.1.100";
         new_pin  = (pin && *pin) ? pin : "";
+        // Strip spaces if user typed "123 456" as shown on the phone screen
+        std::string clean_pin;
+        for (char c : new_pin) {
+            if (c != ' ' && c != '-') clean_pin.push_back(c);
+        }
+        new_pin = clean_pin;
     } else {
         new_host = (usb_dev && *usb_dev) ? usb_dev : "127.0.0.1";
-        new_pin  = (pin && *pin) ? pin : "usb-zero-config";
+        new_pin  = "usb-zero-config";
     }
 
     std::string new_lens = lens && *lens ? lens : "0";
     std::string new_cdc  = cdc && *cdc ? cdc : "hevc";
     int new_fps          = fps && *fps ? std::atoi(fps) : 60;
-    int new_w = 3840, new_h = 2160;
-    if (res && std::string(res) == "2560x1440") { new_w = 2560; new_h = 1440; }
-    else if (res && std::string(res) == "1920x1080") { new_w = 1920; new_h = 1080; }
+    int new_w = 1920, new_h = 1080;
+    if (res && std::string(res) == "3840x2160") { new_w = 3840; new_h = 2160; }
+    else if (res && std::string(res) == "2560x1440") { new_w = 2560; new_h = 1440; }
 
     bool stream_changed = (ctx->conn_mode != new_mode || ctx->config.host != new_host ||
                            ctx->config.pin != new_pin || ctx->config.width != new_w ||
@@ -470,6 +589,7 @@ static void source_update(void* data, obs_data_t* settings) {
 }
 
 static void* source_create(obs_data_t* settings, obs_source_t* source) {
+    DiagnosticLogger::info("OBS-Source", "Creating CameraPhone 4K Pro source instance");
     auto* ctx = new CameraPhoneSourceContext();
     ctx->source = source;
     source_update(ctx, settings);
@@ -479,12 +599,13 @@ static void* source_create(obs_data_t* settings, obs_source_t* source) {
 static void source_destroy(void* data) {
     auto* ctx = static_cast<CameraPhoneSourceContext*>(data);
     if (!ctx) return;
+    DiagnosticLogger::info("OBS-Source", "Destroying CameraPhone 4K Pro source instance");
     ctx->stop_pipeline();
     delete ctx;
 }
 
 static uint32_t source_get_width(void*) {
-    return 0; // Async video sources report dimensions via obs_source_output_video2 frames
+    return 0;
 }
 
 static uint32_t source_get_height(void*) {
@@ -527,6 +648,7 @@ void register_cameraphone_source() {
     info.icon_type      = 13;   // OBS_ICON_TYPE_CAMERA (0x0d)
 
     api.obs_register_source_s(&info, sizeof(info));
+    DiagnosticLogger::info("OBS-Plugin", "Registered cameraphone_obs_source (ABI v30, 0x198 bytes, icon_type=CAMERA)");
 }
 
 } // namespace camphone

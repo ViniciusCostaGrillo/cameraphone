@@ -1,4 +1,5 @@
 #include "stream-client.hpp"
+#include "diagnostic-logger.hpp"
 #include <chrono>
 #include <cstring>
 #include <sstream>
@@ -114,7 +115,10 @@ bool StreamClient::parse_capabilities_json(const std::string& json, DeviceCapabi
 
 bool StreamClient::fetch_capabilities(const std::string& host, uint16_t port, const std::string& pin, DeviceCapabilities& out) {
     socket_t s = connect_with_timeout(host, port, 1500);
-    if (s == kInvalidSocket) return false;
+    if (s == kInvalidSocket) {
+        DiagnosticLogger::warn("StreamClient", "fetch_capabilities failed to connect to " + host + ":" + std::to_string(port));
+        return false;
+    }
 
     std::ostringstream req;
     req << "GET /v1/capabilities HTTP/1.1\r\n"
@@ -132,10 +136,89 @@ bool StreamClient::fetch_capabilities(const std::string& host, uint16_t port, co
     }
     close_sock(s);
 
+    if (resp.find("401 Unauthorized") != std::string::npos) {
+        DiagnosticLogger::error("StreamClient", "fetch_capabilities rejected with 401 Unauthorized on " + host + " (verify Wi-Fi 6-digit PIN)");
+        return false;
+    }
+    if (resp.find("429 Too Many Requests") != std::string::npos) {
+        DiagnosticLogger::error("StreamClient", "fetch_capabilities rejected with 429 Rate Limited on " + host);
+        return false;
+    }
+    if (resp.find("200 OK") == std::string::npos) {
+        DiagnosticLogger::warn("StreamClient", "fetch_capabilities non-200 response from " + host + ":" + std::to_string(port));
+        return false;
+    }
+    auto body_pos = resp.find("\r\n\r\n");
+    if (body_pos == std::string::npos) return false;
+    bool ok = parse_capabilities_json(resp.substr(body_pos + 4), out);
+    if (ok) {
+        DiagnosticLogger::info("StreamClient", "Connected to " + out.device_model + " (" + out.soc + ") at " + host + ":" + std::to_string(port));
+    }
+    return ok;
+}
+
+bool StreamClient::fetch_remote_logs(const std::string& host, uint16_t port, const std::string& pin, std::string& out_logs) {
+    socket_t s = connect_with_timeout(host, port, 1500);
+    if (s == kInvalidSocket) {
+        return false;
+    }
+
+    std::ostringstream req;
+    req << "GET /v1/logs HTTP/1.1\r\n"
+        << "Host: " << host << "\r\n"
+        << "Authorization: Bearer " << pin << "\r\n"
+        << "Connection: close\r\n\r\n";
+    std::string rstr = req.str();
+    send(s, rstr.data(), static_cast<int>(rstr.size()), 0);
+
+    std::string resp;
+    char buf[4096];
+    int r = 0;
+    while ((r = recv(s, buf, sizeof(buf), 0)) > 0) {
+        resp.append(buf, static_cast<size_t>(r));
+    }
+    close_sock(s);
+
     if (resp.find("200 OK") == std::string::npos) return false;
     auto body_pos = resp.find("\r\n\r\n");
     if (body_pos == std::string::npos) return false;
-    return parse_capabilities_json(resp.substr(body_pos + 4), out);
+    std::string body = resp.substr(body_pos + 4);
+
+    // Format JSON array of log strings into readable multi-line text
+    std::ostringstream formatted;
+    size_t pos = body.find('[');
+    if (pos == std::string::npos) {
+        out_logs = body;
+        return true;
+    }
+    bool in_str = false;
+    bool esc = false;
+    std::string cur;
+    for (size_t i = pos + 1; i < body.size(); ++i) {
+        char c = body[i];
+        if (!in_str) {
+            if (c == '"') {
+                in_str = true;
+                cur.clear();
+            } else if (c == ']') {
+                break;
+            }
+        } else {
+            if (esc) {
+                cur.push_back(c);
+                esc = false;
+            } else if (c == '\\') {
+                esc = true;
+            } else if (c == '"') {
+                in_str = false;
+                formatted << "  [APK] " << cur << "\r\n";
+            } else {
+                cur.push_back(c);
+            }
+        }
+    }
+    out_logs = formatted.str();
+    return true;
 }
 
 bool StreamClient::send_control_patch(const std::string& host, uint16_t port, const std::string& pin, const std::string& json_patch) {
@@ -179,11 +262,12 @@ void StreamClient::start_streaming(const StreamConfig& cfg, BoundedFrameQueue& v
     stop_streaming();
     running_.store(true);
     worker_ = std::thread([this, cfg, &video_queue, &audio_queue]() {
+        uint64_t rx_packets = 0;
         while (running_.load()) {
-            socket_t s = connect_with_timeout(cfg.host, cfg.port, 2000);
+            socket_t s = connect_with_timeout(cfg.host, cfg.port, 2500);
             if (s == kInvalidSocket) {
                 connected_.store(false);
-                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                std::this_thread::sleep_for(std::chrono::milliseconds(800));
                 continue;
             }
 
@@ -210,25 +294,35 @@ void StreamClient::start_streaming(const StreamConfig& cfg, BoundedFrameQueue& v
                 http_hdr.push_back(ch);
             }
             if (http_hdr.find("200 OK") == std::string::npos) {
+                DiagnosticLogger::warn("StreamClient", "GET /v1/stream rejected on " + cfg.host + ": " + http_hdr.substr(0, http_hdr.find('\r')));
                 close_sock(s);
                 connected_.store(false);
-                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+                std::this_thread::sleep_for(std::chrono::milliseconds(1200));
                 continue;
             }
 
+            DiagnosticLogger::info("StreamClient", "Binary stream connected to " + cfg.host + ":" + std::to_string(cfg.port) + " (" + cfg.codec + " " + std::to_string(cfg.width) + "x" + std::to_string(cfg.height) + ")");
             connected_.store(true);
             std::array<uint8_t, kHeaderSize> wire_hdr{};
             while (running_.load()) {
                 if (!recv_exact(s, wire_hdr.data(), kHeaderSize)) {
+                    DiagnosticLogger::warn("StreamClient", "Stream socket closed or timed out waiting for packet header from " + cfg.host);
                     break;
                 }
                 PacketHeader pkt_hdr{};
-                if (deserialize_header(wire_hdr, pkt_hdr) != ParseStatus::Ok) {
+                auto st = deserialize_header(wire_hdr, pkt_hdr);
+                if (st != ParseStatus::Ok) {
+                    DiagnosticLogger::error("StreamClient", "Invalid CamPhoneWire header status=" + std::to_string(static_cast<int>(st)));
                     break;
                 }
                 std::vector<uint8_t> payload(pkt_hdr.payload_size);
                 if (pkt_hdr.payload_size > 0 && !recv_exact(s, payload.data(), pkt_hdr.payload_size)) {
+                    DiagnosticLogger::warn("StreamClient", "Stream socket closed while reading payload (" + std::to_string(pkt_hdr.payload_size) + " bytes)");
                     break;
+                }
+                ++rx_packets;
+                if (rx_packets == 1 || rx_packets % 120 == 0) {
+                    DiagnosticLogger::info("StreamClient", "Received packet #" + std::to_string(rx_packets) + " type=" + std::to_string(static_cast<int>(pkt_hdr.stream_type)) + " bytes=" + std::to_string(pkt_hdr.payload_size));
                 }
                 FramePacket fp{pkt_hdr.stream_type, pkt_hdr.flags, pkt_hdr.pts_us, std::move(payload)};
                 if (pkt_hdr.stream_type == StreamType::Video) {

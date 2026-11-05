@@ -95,10 +95,11 @@ def verify_apk_package_and_bytecode():
         "Lcom/cameraphone/obs/net/CamPhoneServer;",
         "Lcom/cameraphone/obs/service/CameraStreamService;",
         "Lcom/cameraphone/obs/ui/MainActivity;",
+        "Lcom/cameraphone/obs/util/AppLogger;",
     ]:
         assert required_cls in combined_dex, f"Missing class {required_cls} in APK DEX!"
 
-    print(f"[PASS] APK Verification Test: {apk_path.name} cryptographic signatures (v1/v2/v3), manifest badging, and all 9 compiled DEX classes verified.")
+    print(f"[PASS] APK Verification Test: {apk_path.name} cryptographic signatures (v1/v2/v3), manifest badging, and all 10 compiled DEX classes verified.")
 
 if __name__ == "__main__":
     verify_dll_runtime()

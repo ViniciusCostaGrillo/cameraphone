@@ -1,3 +1,4 @@
+#include "../obs-plugin/src/diagnostic-logger.hpp"
 #include "../obs-plugin/src/discovery-manager.hpp"
 #include "../obs-plugin/src/stream-client.hpp"
 
@@ -71,6 +72,7 @@ static bool install_zero_config_bundle(std::string& out_msg, bool allow_uac_prom
 
     if (dll_src.empty()) {
         out_msg = "[ERRO] Arquivo cameraphone-obs.dll nao encontrado.";
+        DiagnosticLogger::error("Installer", out_msg);
         return false;
     }
 
@@ -81,10 +83,10 @@ static bool install_zero_config_bundle(std::string& out_msg, bool allow_uac_prom
 
     if (!fs::exists(obs_plugins_dir)) {
         out_msg = "[AVISO] OBS Studio nao encontrado em C:\\Program Files\\obs-studio\\obs-plugins\\64bit.";
+        DiagnosticLogger::warn("Installer", out_msg);
         return false;
     }
 
-    // Attempt direct copy first (succeeds if already Administrator)
     std::error_code ec;
     fs::create_directories(obs_adb_dir, ec);
     const fs::path dll_dst = obs_plugins_dir / "cameraphone-obs.dll";
@@ -105,17 +107,17 @@ static bool install_zero_config_bundle(std::string& out_msg, bool allow_uac_prom
             }
         }
         out_msg = "[ZERO-CONFIG ATIVO] Plugin cameraphone-obs.dll + CameraPhone-OBS.apk + ADB instalados no OBS Studio!\r\n"
-                  "  -> Abra o OBS Studio > Adicionar Fonte (+) > 'CameraPhone 4K Pro (Cabo USB / Wi-Fi IP)'.\r\n"
-                  "  -> Dentro do OBS voce pode escolher Cabo USB ou IP e clicar em 'Instalar APK no Celular'!";
+                  "  -> Se o OBS estiver aberto, feche e abra novamente para carregar a nova DLL.";
+        DiagnosticLogger::info("Installer", "Successfully installed DLL + APK + ADB into OBS Studio.");
         return true;
     }
 
     if (!allow_uac_prompt) {
-        out_msg = "[ERRO] Sem permissao de escrita em C:\\Program Files\\obs-studio.";
+        out_msg = "[ERRO] Sem permissao de escrita em C:\\Program Files\\obs-studio (feche o OBS Studio antes de atualizar a DLL!).";
+        DiagnosticLogger::error("Installer", out_msg);
         return false;
     }
 
-    // Re-launch self elevated with --elevated-install to copy DLL + APK + ADB into Program Files
     char self_path[MAX_PATH]{};
     GetModuleFileNameA(nullptr, self_path, MAX_PATH);
     SHELLEXECUTEINFOA sei{};
@@ -132,19 +134,20 @@ static bool install_zero_config_bundle(std::string& out_msg, bool allow_uac_prom
     }
 
     if (fs::exists(dll_dst)) {
-        out_msg = "[ZERO-CONFIG ATIVO] Plugin cameraphone-obs.dll + CameraPhone-OBS.apk + ADB instalados no OBS Studio!\r\n"
-                  "  -> Abra o OBS Studio > Adicionar Fonte (+) > 'CameraPhone 4K Pro (Cabo USB / Wi-Fi IP)'.\r\n"
-                  "  -> Dentro do OBS voce pode escolher Cabo USB ou IP e clicar em 'Instalar APK no Celular'!";
+        out_msg = "[ZERO-CONFIG ATIVO] Plugin cameraphone-obs.dll + CameraPhone-OBS.apk + ADB instalados no OBS Studio!";
+        DiagnosticLogger::info("Installer", out_msg);
         return true;
     }
 
-    out_msg = "[AVISO] Permissao de Administrador necessria para instalar automaticamente em C:\\Program Files\\obs-studio.";
+    out_msg = "[AVISO] Nao foi possivel sobrescrever cameraphone-obs.dll (se o OBS Studio estiver aberto, feche-o e tente novamente).";
+    DiagnosticLogger::warn("Installer", out_msg);
     return false;
 }
 
 static std::string install_android_apk_and_tunnel() {
     std::string msg;
     DiscoveryManager::install_apk_and_launch_usb(msg, 4748, 4748);
+    DiagnosticLogger::info("Installer-USB", msg);
     return msg;
 }
 
@@ -152,6 +155,7 @@ enum ControlIds : int {
     ID_BTN_INSTALL_OBS = 101,
     ID_BTN_SETUP_USB   = 102,
     ID_BTN_PROBE_CAPS  = 103,
+    ID_BTN_VIEW_LOGS   = 107,
     ID_EDIT_HOST       = 104,
     ID_EDIT_PIN        = 105,
     ID_EDIT_LOG        = 106
@@ -170,59 +174,92 @@ static void append_log(const std::string& msg) {
     SendMessageA(g_edit_log, EM_REPLACESEL, FALSE, reinterpret_cast<LPARAM>(line.c_str()));
 }
 
+static void fetch_and_display_all_logs(const std::string& host, const std::string& pin) {
+    std::ostringstream ss;
+    ss << "\r\n==================== DIAGNOSTICO INTEGRADO (PC + APK) ====================\r\n";
+    ss << "[1] LOG LOCAL DO PC (" << DiagnosticLogger::log_file_path().string() << "):\r\n";
+    ss << DiagnosticLogger::read_tail(6144) << "\r\n";
+
+    StreamClient client;
+    std::string apk_logs;
+    std::string effective_pin = pin.empty() ? (host == "127.0.0.1" ? "usb-zero-config" : "") : pin;
+    if (client.fetch_remote_logs(host, 4748, effective_pin, apk_logs)) {
+        ss << "[2] LOGS REMOTOS DO APK NO CELULAR (" << host << ":4748):\r\n" << apk_logs;
+    } else {
+        ss << "[2] LOGS REMOTOS DO APK (" << host << ":4748): Nao conectado ou PIN Wi-Fi incorreto.\r\n";
+    }
+    ss << "==========================================================================\r\n";
+    append_log(ss.str());
+}
+
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
     switch (msg) {
     case WM_CREATE: {
         HFONT font_title = CreateFontA(20, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                                        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                                        DEFAULT_PITCH | FF_DONTCARE, "Segoe UI");
-        HFONT font_ui = CreateFontA(15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+        HFONT font_ui = CreateFontA(14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                                     OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                                     DEFAULT_PITCH | FF_DONTCARE, "Consolas");
 
-        HWND title = CreateWindowExA(0, "STATIC", "CameraPhone OBS 4K60/120 HDR - Zero-Config Installer",
-                                     WS_CHILD | WS_VISIBLE, 20, 16, 580, 28, hwnd, nullptr, nullptr, nullptr);
+        HWND title = CreateWindowExA(0, "STATIC", "CameraPhone OBS 4K60/120 HDR - Instalador & Central de Logs",
+                                     WS_CHILD | WS_VISIBLE, 20, 14, 620, 28, hwnd, nullptr, nullptr, nullptr);
         SendMessageA(title, WM_SETFONT, reinterpret_cast<WPARAM>(font_title), TRUE);
 
         CreateWindowExA(0, "STATIC", "Host (USB 127.0.0.1 ou IP Wi-Fi):",
-                        WS_CHILD | WS_VISIBLE, 20, 56, 260, 20, hwnd, nullptr, nullptr, nullptr);
+                        WS_CHILD | WS_VISIBLE, 20, 50, 260, 20, hwnd, nullptr, nullptr, nullptr);
         g_edit_host = CreateWindowExA(WS_EX_CLIENTEDGE, "EDIT", "127.0.0.1",
                                       WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
-                                      20, 78, 260, 26, hwnd, reinterpret_cast<HMENU>(ID_EDIT_HOST), nullptr, nullptr);
+                                      20, 72, 260, 26, hwnd, reinterpret_cast<HMENU>(ID_EDIT_HOST), nullptr, nullptr);
         SendMessageA(g_edit_host, WM_SETFONT, reinterpret_cast<WPARAM>(font_ui), TRUE);
 
         CreateWindowExA(0, "STATIC", "PIN Wi-Fi (Vazio no Cabo USB):",
-                        WS_CHILD | WS_VISIBLE, 300, 56, 240, 20, hwnd, nullptr, nullptr, nullptr);
+                        WS_CHILD | WS_VISIBLE, 300, 50, 260, 20, hwnd, nullptr, nullptr, nullptr);
         g_edit_pin = CreateWindowExA(WS_EX_CLIENTEDGE, "EDIT", "",
-                                     WS_CHILD | WS_VISIBLE | ES_PASSWORD | ES_AUTOHSCROLL,
-                                     300, 78, 180, 26, hwnd, reinterpret_cast<HMENU>(ID_EDIT_PIN), nullptr, nullptr);
+                                     WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+                                     300, 72, 180, 26, hwnd, reinterpret_cast<HMENU>(ID_EDIT_PIN), nullptr, nullptr);
         SendMessageA(g_edit_pin, WM_SETFONT, reinterpret_cast<WPARAM>(font_ui), TRUE);
 
-        CreateWindowExA(0, "BUTTON", "1. Reinstalar no OBS",
+        CreateWindowExA(0, "BUTTON", "1. Atualizar OBS",
                         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                        20, 118, 190, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_INSTALL_OBS), nullptr, nullptr);
+                        20, 110, 145, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_INSTALL_OBS), nullptr, nullptr);
 
-        CreateWindowExA(0, "BUTTON", "2. Instalar APK (Cabo USB)",
+        CreateWindowExA(0, "BUTTON", "2. Instalar APK (USB)",
                         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                        220, 118, 190, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_SETUP_USB), nullptr, nullptr);
+                        175, 110, 160, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_SETUP_USB), nullptr, nullptr);
 
-        CreateWindowExA(0, "BUTTON", "3. Testar Camera 4K/HDR",
+        CreateWindowExA(0, "BUTTON", "3. Testar Conexao",
                         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                        420, 118, 180, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_PROBE_CAPS), nullptr, nullptr);
+                        345, 110, 145, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_PROBE_CAPS), nullptr, nullptr);
+
+        CreateWindowExA(0, "BUTTON", "4. Ver Logs (PC + APK)",
+                        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                        500, 110, 160, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_VIEW_LOGS), nullptr, nullptr);
 
         g_edit_log = CreateWindowExA(WS_EX_CLIENTEDGE, "EDIT", "",
                                      WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
-                                     20, 166, 580, 220, hwnd, reinterpret_cast<HMENU>(ID_EDIT_LOG), nullptr, nullptr);
+                                     20, 156, 640, 290, hwnd, reinterpret_cast<HMENU>(ID_EDIT_LOG), nullptr, nullptr);
         SendMessageA(g_edit_log, WM_SETFONT, reinterpret_cast<WPARAM>(font_ui), TRUE);
 
-        // Zero-Config: automatically install into OBS Studio on startup!
         std::string auto_install_msg;
         install_zero_config_bundle(auto_install_msg, true);
         append_log(auto_install_msg);
+        append_log("[Log Central] Arquivo de log em tempo real: " + DiagnosticLogger::log_file_path().string());
         return 0;
     }
     case WM_COMMAND: {
         const int id = LOWORD(wparam);
+        char host_buf[128]{};
+        char pin_buf[64]{};
+        GetWindowTextA(g_edit_host, host_buf, sizeof(host_buf));
+        GetWindowTextA(g_edit_pin, pin_buf, sizeof(pin_buf));
+        std::string host_s = host_buf[0] ? host_buf : "127.0.0.1";
+        std::string raw_pin = pin_buf;
+        std::string clean_pin;
+        for (char c : raw_pin) {
+            if (c != ' ' && c != '-') clean_pin.push_back(c);
+        }
+
         if (id == ID_BTN_INSTALL_OBS) {
             std::string status;
             install_zero_config_bundle(status, true);
@@ -230,14 +267,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
         } else if (id == ID_BTN_SETUP_USB) {
             append_log(install_android_apk_and_tunnel());
         } else if (id == ID_BTN_PROBE_CAPS) {
-            char host_buf[128]{};
-            char pin_buf[64]{};
-            GetWindowTextA(g_edit_host, host_buf, sizeof(host_buf));
-            GetWindowTextA(g_edit_pin, pin_buf, sizeof(pin_buf));
-
-            std::string host_s = host_buf[0] ? host_buf : "127.0.0.1";
-            std::string pin_s = pin_buf[0] ? pin_buf : (host_s == "127.0.0.1" ? "usb-zero-config" : "");
-
+            if (host_s == "127.0.0.1") {
+                DiscoveryManager::list_usb_devices(4748, 4748);
+            }
+            std::string pin_s = clean_pin.empty() ? (host_s == "127.0.0.1" ? "usb-zero-config" : "") : clean_pin;
             StreamClient client;
             DeviceCapabilities caps{};
             if (client.fetch_capabilities(host_s, 4748, pin_s, caps)) {
@@ -251,9 +284,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
                     ss << "\r\n    * ID [" << l.id << "] " << l.label;
                 }
                 append_log(ss.str());
+                fetch_and_display_all_logs(host_s, pin_s);
             } else {
-                append_log("[FALHA] Nao foi possivel conectar em " + host_s + ":4748. Conecte o cabo USB ou verifique o IP/PIN.");
+                append_log("[FALHA] Nao foi possivel conectar em " + host_s + ":4748. Clique em '4. Ver Logs (PC + APK)' para diagnostico.");
             }
+        } else if (id == ID_BTN_VIEW_LOGS) {
+            fetch_and_display_all_logs(host_s, clean_pin);
         }
         return 0;
     }
@@ -268,6 +304,7 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--self-test") {
+            DiagnosticLogger::info("SelfTest", "CameraPhone-OBS.exe --self-test executed.");
             std::cout << "[PASS] CameraPhone-OBS.exe desktop launcher self-test passed.\n";
             return 0;
         }
@@ -279,6 +316,10 @@ int main(int argc, char** argv) {
             std::string msg;
             install_zero_config_bundle(msg, true);
             std::cout << msg << "\n" << install_android_apk_and_tunnel() << "\n";
+            return 0;
+        }
+        if (arg == "--dump-logs") {
+            std::cout << DiagnosticLogger::read_tail(16384) << "\n";
             return 0;
         }
     }
@@ -293,9 +334,9 @@ int main(int argc, char** argv) {
     RegisterClassA(&wc);
 
     HWND hwnd = CreateWindowExA(
-        0, wc.lpszClassName, "CameraPhone OBS 4K Pro - Zero-Config Installer",
+        0, wc.lpszClassName, "CameraPhone OBS 4K Pro - Instalador & Central de Logs",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE,
-        CW_USEDEFAULT, CW_USEDEFAULT, 635, 440,
+        CW_USEDEFAULT, CW_USEDEFAULT, 695, 500,
         nullptr, nullptr, wc.hInstance, nullptr
     );
     if (!hwnd) return 1;

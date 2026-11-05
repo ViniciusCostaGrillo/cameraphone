@@ -8,6 +8,7 @@ import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.MediaRecorder
 import com.cameraphone.obs.protocol.CamPhonePacket
+import com.cameraphone.obs.util.AppLogger
 import java.util.concurrent.atomic.AtomicBoolean
 
 class HardwareAudioEncoder(
@@ -27,28 +28,44 @@ class HardwareAudioEncoder(
                 .coerceAtLeast(4096)
 
             val recorder = try {
-                AudioRecord(
+                val r = AudioRecord(
                     MediaRecorder.AudioSource.CAMCORDER,
                     sampleRate,
                     channelConfig,
                     AudioFormat.ENCODING_PCM_16BIT,
                     minBuf * 2
                 )
-            } catch (_: Exception) {
+                if (r.state != AudioRecord.STATE_INITIALIZED) {
+                    AppLogger.warn("AudioEncoder", "AudioRecord STATE_UNINITIALIZED (check RECORD_AUDIO permission). Continuing video-only.")
+                    try { r.release() } catch (_: Throwable) {}
+                    running.set(false)
+                    return@Thread
+                }
+                r
+            } catch (e: Throwable) {
+                AppLogger.warn("AudioEncoder", "AudioRecord creation failed (${e.message}). Continuing video-only.")
                 running.set(false)
                 return@Thread
             }
 
-            val format = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, 2).apply {
-                setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
-                setInteger(MediaFormat.KEY_BIT_RATE, bitrateBps)
-                setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16384)
+            val codec = try {
+                val format = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, 2).apply {
+                    setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
+                    setInteger(MediaFormat.KEY_BIT_RATE, bitrateBps)
+                    setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16384)
+                }
+                val mc = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
+                mc.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+                mc.start()
+                recorder.startRecording()
+                AppLogger.info("AudioEncoder", "Started HW AAC-LC audio encoder (${sampleRate}Hz stereo)")
+                mc
+            } catch (e: Throwable) {
+                AppLogger.error("AudioEncoder", "Failed to start AAC audio encoder", e)
+                try { recorder.release() } catch (_: Throwable) {}
+                running.set(false)
+                return@Thread
             }
-
-            val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
-            codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-            codec.start()
-            recorder.startRecording()
 
             val pcmBuf = ByteArray(4096)
             val info = MediaCodec.BufferInfo()
@@ -90,6 +107,8 @@ class HardwareAudioEncoder(
                         outIdx = codec.dequeueOutputBuffer(info, 0L)
                     }
                 }
+            } catch (e: Throwable) {
+                AppLogger.error("AudioEncoder", "Audio loop stopped", e)
             } finally {
                 try { recorder.stop() } catch (_: Exception) {}
                 try { recorder.release() } catch (_: Exception) {}

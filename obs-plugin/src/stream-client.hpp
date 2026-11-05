@@ -8,6 +8,10 @@
 #include <thread>
 #include <vector>
 
+#ifdef DeviceCapabilities
+#undef DeviceCapabilities
+#endif
+
 namespace camphone {
 
 struct LensInfo {
@@ -50,6 +54,7 @@ public:
     static bool parse_capabilities_json(const std::string& json, DeviceCapabilities& out);
 
     bool fetch_capabilities(const std::string& host, uint16_t port, const std::string& pin, DeviceCapabilities& out);
+    bool fetch_remote_logs(const std::string& host, uint16_t port, const std::string& pin, std::string& out_logs);
     bool send_control_patch(const std::string& host, uint16_t port, const std::string& pin, const std::string& json_patch);
     bool send_tally_state(const std::string& host, uint16_t port, const std::string& pin, const std::string& state);
 

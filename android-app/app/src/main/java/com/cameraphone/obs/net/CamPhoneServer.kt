@@ -3,6 +3,7 @@ package com.cameraphone.obs.net
 import com.cameraphone.obs.security.AuthResult
 import com.cameraphone.obs.security.RawControlPatch
 import com.cameraphone.obs.security.SecurityGate
+import com.cameraphone.obs.util.AppLogger
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStream
@@ -40,6 +41,7 @@ class CamPhoneServer(
         ss.reuseAddress = true
         ss.bind(InetSocketAddress(bindAddr, port))
         serverSocket = ss
+        AppLogger.info("Server", "Listening on ${bindAddr.hostAddress}:${ss.localPort} (usbOnlyLoopback=$usbOnlyLoopback)")
 
         Thread({
             while (running.get()) {
@@ -60,7 +62,8 @@ class CamPhoneServer(
                 out.write(header16)
                 out.write(payload)
                 out.flush()
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                AppLogger.warn("Server", "Stream client socket write closed (${e.message})")
                 activeStreamOutput = null
                 streamingActive.set(false)
                 onStopStream()
@@ -72,6 +75,7 @@ class CamPhoneServer(
         socket.tcpNoDelay = true
         socket.soTimeout = 5000
         val remoteIp = socket.inetAddress?.hostAddress ?: "unknown"
+        var ownsActiveStream = false
 
         try {
             val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
@@ -97,10 +101,12 @@ class CamPhoneServer(
 
             when (securityGate.verifyRequest(remoteIp, authHeader)) {
                 AuthResult.Unauthorized -> {
+                    AppLogger.warn("Auth", "Rejected 401 from $remoteIp on $method $fullPath (invalid PIN)")
                     writeHttpResponse(out, 401, "Unauthorized", "{\"error\":\"invalid_pin\"}")
                     return
                 }
                 AuthResult.RateLimited -> {
+                    AppLogger.warn("Auth", "Rejected 429 from $remoteIp on $method $fullPath (rate limited)")
                     writeHttpResponse(out, 429, "Too Many Requests", "{\"error\":\"rate_limited\"}")
                     return
                 }
@@ -123,13 +129,20 @@ class CamPhoneServer(
 
             when {
                 method == "GET" && path == "/v1/capabilities" -> {
+                    AppLogger.info("Server", "GET /v1/capabilities from $remoteIp -> 200 OK")
                     writeHttpResponse(out, 200, "OK", capabilitiesJsonProvider())
+                }
+                method == "GET" && path == "/v1/logs" -> {
+                    writeHttpResponse(out, 200, "OK", "{\"logs\":${AppLogger.dumpJsonArray()}}")
                 }
                 method == "GET" && path == "/v1/stream" -> {
                     if (!streamingActive.compareAndSet(false, true)) {
-                        writeHttpResponse(out, 409, "Conflict", "{\"error\":\"stream_already_active\"}")
-                        return
+                        AppLogger.warn("Server", "Second stream request from $remoteIp while active -> replacing previous stream")
+                        try { activeStreamOutput?.close() } catch (_: Exception) {}
+                        onStopStream()
+                        streamingActive.set(true)
                     }
+                    ownsActiveStream = true
                     val params = parseQuery(query)
                     val lensId = params["lens"] ?: "0"
                     val res = (params["res"] ?: "3840x2160").split("x")
@@ -139,6 +152,7 @@ class CamPhoneServer(
                     val codec = params["codec"] ?: "hevc"
                     val hdr = params["hdr"] == "1" || params["hdr"] == "true"
 
+                    AppLogger.info("Server", "Starting stream to $remoteIp: lens=$lensId, ${w}x${h}@${fps}fps, codec=$codec, hdr=$hdr")
                     out.write("HTTP/1.1 200 OK\r\nContent-Type: application/x-camphone-stream\r\nConnection: keep-alive\r\n\r\n".toByteArray())
                     out.flush()
                     socket.soTimeout = 0 // Streaming socket stays open
@@ -147,10 +161,11 @@ class CamPhoneServer(
 
                     // Block until client disconnects
                     val probeBuf = ByteArray(16)
-                    while (running.get() && streamingActive.get()) {
+                    while (running.get() && streamingActive.get() && activeStreamOutput === out) {
                         val r = socket.getInputStream().read(probeBuf)
                         if (r < 0) break
                     }
+                    AppLogger.info("Server", "Stream client $remoteIp disconnected.")
                 }
                 method == "PATCH" && path == "/v1/control" -> {
                     val patch = RawControlPatch(
@@ -168,6 +183,7 @@ class CamPhoneServer(
                 }
                 method == "PUT" && path == "/v1/tally" -> {
                     val state = extractJsonString(body, "state") ?: "idle"
+                    AppLogger.info("Server", "PUT /v1/tally state=$state from $remoteIp")
                     onTallyUpdate(state)
                     writeHttpResponse(out, 200, "OK", "{\"tally\":\"$state\"}")
                 }
@@ -175,9 +191,12 @@ class CamPhoneServer(
                     writeHttpResponse(out, 404, "Not Found", "{\"error\":\"not_found\"}")
                 }
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            if (ownsActiveStream) {
+                AppLogger.warn("Server", "Active stream connection ended: ${e.message}")
+            }
         } finally {
-            if (activeStreamOutput != null) {
+            if (ownsActiveStream && activeStreamOutput != null) {
                 activeStreamOutput = null
                 streamingActive.set(false)
                 onStopStream()
