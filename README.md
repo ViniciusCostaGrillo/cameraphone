@@ -112,12 +112,12 @@ Todos os binários compilados e assinados já estão prontos na pasta [`dist/`](
 | [`dist/CameraPhone-OBS.apk`](dist/CameraPhone-OBS.apk) | `848 KB` | **Aplicativo Android Nativo** (assinado com esquemas v1/v2/v3) |
 | [`dist/cameraphone-obs.dll`](dist/cameraphone-obs.dll) | `1.49 MB` | **Plugin Nativo 64-bit** para OBS Studio v30+ |
 
-### Opção A — Usando o Instalador Gráfico (`CameraPhone-OBS.exe`)
-1. Conecte seu celular Android ao PC via cabo USB com a **Depuração USB** ativada.
-2. Abra o executável [`CameraPhone-OBS.exe`](CameraPhone-OBS.exe).
-3. Clique em **"1. Instalar Plugin no OBS"** (copia automaticamente a `.dll` para `C:\Program Files\obs-studio\obs-plugins\64bit`).
-4. Clique em **"2. Ativar USB ADB + APK"** (instala o `CameraPhone-OBS.apk` no celular e cria o túnel `127.0.0.1:4748`).
-5. Abra o app **CameraPhone OBS** no celular, veja o **PIN de 6 dígitos** e adicione a fonte **CameraPhone 4K Pro (USB / Wi-Fi)** dentro do OBS Studio!
+### Opção A — Fluxo 100% Zero-Config (Direto dentro do OBS Studio)
+1. Execute o instalador [`CameraPhone-OBS.exe`](CameraPhone-OBS.exe) no PC: **ao abrir, ele já instala automaticamente** o plugin (`cameraphone-obs.dll`), o pacote Android (`CameraPhone-OBS.apk`) e o motor ADB embutido dentro do seu OBS Studio (`C:\Program Files\obs-studio\`).
+2. Abra o **OBS Studio**, clique em **Adicionar Fonte (`+`)** e selecione **📷 `CameraPhone 4K Pro (Cabo USB / Wi-Fi IP)`**.
+3. Na janela de propriedades da câmera **dentro do próprio OBS Studio**:
+   - Escolha o **Modo de Conexão**: **`Cabo USB (Zero-Config Automático)`** ou **`Wi-Fi (Conectar por IP na Rede)`**.
+   - Se for a primeira vez usando no celular, basta conectar o cabo USB e clicar no botão **`Instalar APK no Celular (Somente via Cabo USB)`** dentro do próprio OBS Studio — ele instala o APK no telefone, concede as permissões de câmera/microfone, abre o app e inicia o vídeo automaticamente sem precisar digitar IP nem senha!
 
 ### Opção B — Instalação via PowerShell
 ```powershell

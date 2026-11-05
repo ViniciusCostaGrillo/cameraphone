@@ -40,6 +40,7 @@ void test_capabilities_json_parser() {
 int main() {
     test_adb_serial_allowlist_blocks_command_injection();
     test_capabilities_json_parser();
+    assert(!DiscoveryManager::resolve_adb_path().empty());
     std::cout << "[PASS] OBS Plugin Discovery & StreamClient security tests passed.\n";
     return 0;
 }

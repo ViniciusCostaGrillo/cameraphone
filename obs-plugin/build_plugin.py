@@ -87,6 +87,14 @@ def build_desktop_exe():
         shutil.copy2(apk_src, dist_dir / "CameraPhone-OBS.apk")
         shutil.copy2(apk_src, ROOT.parent / "CameraPhone-OBS.apk")
     shutil.copy2(out_exe, ROOT.parent / "CameraPhone-OBS.exe")
+    # Bundle ADB inside dist/adb/ for 100% Zero-Config USB operation
+    sdk_pt = Path.home() / "AppData/Local/Android/Sdk/platform-tools"
+    if (sdk_pt / "adb.exe").exists():
+        adb_dist = dist_dir / "adb"
+        adb_dist.mkdir(parents=True, exist_ok=True)
+        for fname in ["adb.exe", "AdbWinApi.dll", "AdbWinUsbApi.dll"]:
+            if (sdk_pt / fname).exists():
+                shutil.copy2(sdk_pt / fname, adb_dist / fname)
     print(f"[Desktop Companion Built] {out_exe} ({out_exe.stat().st_size} bytes)")
 
 if __name__ == "__main__":
