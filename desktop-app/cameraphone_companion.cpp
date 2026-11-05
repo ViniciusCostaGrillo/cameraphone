@@ -42,21 +42,21 @@ static bool install_zero_config_bundle(std::string& out_msg, bool allow_uac_prom
     const fs::path exe_dir = get_exe_dir();
 
     const fs::path dll_src = find_file_in_candidates({
-        exe_dir / "cameraphone-obs.dll",
-        exe_dir / "dist" / "cameraphone-obs.dll",
-        exe_dir / "obs-plugin" / "build" / "cameraphone-obs.dll",
-        exe_dir.parent_path() / "obs-plugin" / "build" / "cameraphone-obs.dll",
-        R"(C:\Cameraphone Plugin OBS\dist\cameraphone-obs.dll)",
-        R"(C:\Cameraphone Plugin OBS\obs-plugin\build\cameraphone-obs.dll)"
+        exe_dir / "cameraphone.dll",
+        exe_dir / "dist" / "cameraphone.dll",
+        exe_dir / "obs-plugin" / "build" / "cameraphone.dll",
+        exe_dir.parent_path() / "obs-plugin" / "build" / "cameraphone.dll",
+        R"(C:\Cameraphone Plugin OBS\dist\cameraphone.dll)",
+        R"(C:\Cameraphone Plugin OBS\obs-plugin\build\cameraphone.dll)"
     });
 
     const fs::path apk_src = find_file_in_candidates({
-        exe_dir / "CameraPhone-OBS.apk",
-        exe_dir / "dist" / "CameraPhone-OBS.apk",
+        exe_dir / "CameraPhone.apk",
+        exe_dir / "dist" / "CameraPhone.apk",
         exe_dir / "android-app" / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk",
         exe_dir.parent_path() / "android-app" / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk",
-        R"(C:\Cameraphone Plugin OBS\dist\CameraPhone-OBS.apk)",
-        R"(C:\Cameraphone Plugin OBS\CameraPhone-OBS.apk)"
+        R"(C:\Cameraphone Plugin OBS\dist\CameraPhone.apk)",
+        R"(C:\Cameraphone Plugin OBS\CameraPhone.apk)"
     });
 
     char local_appdata[MAX_PATH]{};
@@ -71,30 +71,33 @@ static bool install_zero_config_bundle(std::string& out_msg, bool allow_uac_prom
     });
 
     if (dll_src.empty()) {
-        out_msg = "[ERRO] Arquivo cameraphone-obs.dll nao encontrado.";
+        out_msg = "[ERRO] Arquivo cameraphone.dll nao encontrado.";
         DiagnosticLogger::error("Installer", out_msg);
         return false;
     }
 
     const fs::path obs_root = R"(C:\Program Files\obs-studio)";
     const fs::path obs_plugins_dir = obs_root / "obs-plugins" / "64bit";
-    const fs::path obs_data_dir = obs_root / "data" / "obs-plugins" / "cameraphone-obs";
+    const fs::path obs_data_dir = obs_root / "data" / "obs-plugins" / "cameraphone";
     const fs::path obs_adb_dir = obs_data_dir / "adb";
 
     if (!fs::exists(obs_plugins_dir)) {
-        out_msg = "[AVISO] OBS Studio nao encontrado em C:\\Program Files\\obs-studio\\obs-plugins\\64bit.";
+        out_msg = "[AVISO] Pasta de plugins nao encontrada em C:\\Program Files\\obs-studio\\obs-plugins\\64bit.";
         DiagnosticLogger::warn("Installer", out_msg);
         return false;
     }
 
     std::error_code ec;
+    // Clean up legacy cameraphone-obs.dll if present so there are no duplicate sources
+    fs::remove(obs_plugins_dir / "cameraphone-obs.dll", ec);
+
     fs::create_directories(obs_adb_dir, ec);
-    const fs::path dll_dst = obs_plugins_dir / "cameraphone-obs.dll";
+    const fs::path dll_dst = obs_plugins_dir / "cameraphone.dll";
     fs::copy_file(dll_src, dll_dst, fs::copy_options::overwrite_existing, ec);
 
     if (!ec) {
         if (!apk_src.empty()) {
-            fs::copy_file(apk_src, obs_data_dir / "CameraPhone-OBS.apk", fs::copy_options::overwrite_existing, ec);
+            fs::copy_file(apk_src, obs_data_dir / "CameraPhone.apk", fs::copy_options::overwrite_existing, ec);
         }
         if (!adb_src.empty()) {
             const fs::path adb_parent = adb_src.parent_path();
@@ -106,14 +109,14 @@ static bool install_zero_config_bundle(std::string& out_msg, bool allow_uac_prom
                 fs::copy_file(adb_parent / "AdbWinUsbApi.dll", obs_adb_dir / "AdbWinUsbApi.dll", fs::copy_options::overwrite_existing, ec);
             }
         }
-        out_msg = "[ZERO-CONFIG ATIVO] Plugin cameraphone-obs.dll + CameraPhone-OBS.apk + ADB instalados no OBS Studio!\r\n"
-                  "  -> Se o OBS estiver aberto, feche e abra novamente para carregar a nova DLL.";
-        DiagnosticLogger::info("Installer", "Successfully installed DLL + APK + ADB into OBS Studio.");
+        out_msg = "[ZERO-CONFIG ATIVO] Plugin cameraphone.dll + CameraPhone.apk + ADB instalados!\r\n"
+                  "  -> Adicione a fonte 'CameraPhone 4K Pro (Cabo USB / Wi-Fi IP)'.";
+        DiagnosticLogger::info("Installer", "Successfully installed cameraphone.dll + CameraPhone.apk + ADB.");
         return true;
     }
 
     if (!allow_uac_prompt) {
-        out_msg = "[ERRO] Sem permissao de escrita em C:\\Program Files\\obs-studio (feche o OBS Studio antes de atualizar a DLL!).";
+        out_msg = "[ERRO] Sem permissao de escrita em C:\\Program Files (feche o programa de captura antes de atualizar a DLL!).";
         DiagnosticLogger::error("Installer", out_msg);
         return false;
     }
@@ -134,12 +137,12 @@ static bool install_zero_config_bundle(std::string& out_msg, bool allow_uac_prom
     }
 
     if (fs::exists(dll_dst)) {
-        out_msg = "[ZERO-CONFIG ATIVO] Plugin cameraphone-obs.dll + CameraPhone-OBS.apk + ADB instalados no OBS Studio!";
+        out_msg = "[ZERO-CONFIG ATIVO] Plugin cameraphone.dll + CameraPhone.apk + ADB instalados com sucesso!";
         DiagnosticLogger::info("Installer", out_msg);
         return true;
     }
 
-    out_msg = "[AVISO] Nao foi possivel sobrescrever cameraphone-obs.dll (se o OBS Studio estiver aberto, feche-o e tente novamente).";
+    out_msg = "[AVISO] Nao foi possivel sobrescrever cameraphone.dll (feche o programa de captura se estiver aberto e tente novamente).";
     DiagnosticLogger::warn("Installer", out_msg);
     return false;
 }
@@ -152,13 +155,13 @@ static std::string install_android_apk_and_tunnel() {
 }
 
 enum ControlIds : int {
-    ID_BTN_INSTALL_OBS = 101,
-    ID_BTN_SETUP_USB   = 102,
-    ID_BTN_PROBE_CAPS  = 103,
-    ID_BTN_VIEW_LOGS   = 107,
-    ID_EDIT_HOST       = 104,
-    ID_EDIT_PIN        = 105,
-    ID_EDIT_LOG        = 106
+    ID_BTN_INSTALL_PLUGIN = 101,
+    ID_BTN_SETUP_USB      = 102,
+    ID_BTN_PROBE_CAPS     = 103,
+    ID_BTN_VIEW_LOGS      = 107,
+    ID_EDIT_HOST          = 104,
+    ID_EDIT_PIN           = 105,
+    ID_EDIT_LOG           = 106
 };
 
 static HWND g_edit_host = nullptr;
@@ -202,7 +205,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
                                     OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                                     DEFAULT_PITCH | FF_DONTCARE, "Consolas");
 
-        HWND title = CreateWindowExA(0, "STATIC", "CameraPhone OBS 4K60/120 HDR - Instalador & Central de Logs",
+        // Display embedded CameraPhone icon next to the title
+        HICON hIconBig = LoadIconA(GetModuleHandleA(nullptr), MAKEINTRESOURCEA(1));
+        if (hIconBig) {
+            SendMessageA(hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(hIconBig));
+            SendMessageA(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(hIconBig));
+        }
+
+        HWND title = CreateWindowExA(0, "STATIC", "CameraPhone 4K60/120 HDR - Instalador & Central de Logs",
                                      WS_CHILD | WS_VISIBLE, 20, 14, 620, 28, hwnd, nullptr, nullptr, nullptr);
         SendMessageA(title, WM_SETFONT, reinterpret_cast<WPARAM>(font_title), TRUE);
 
@@ -220,9 +230,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
                                      300, 72, 180, 26, hwnd, reinterpret_cast<HMENU>(ID_EDIT_PIN), nullptr, nullptr);
         SendMessageA(g_edit_pin, WM_SETFONT, reinterpret_cast<WPARAM>(font_ui), TRUE);
 
-        CreateWindowExA(0, "BUTTON", "1. Atualizar OBS",
+        CreateWindowExA(0, "BUTTON", "1. Instalar Plugin",
                         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                        20, 110, 145, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_INSTALL_OBS), nullptr, nullptr);
+                        20, 110, 145, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_INSTALL_PLUGIN), nullptr, nullptr);
 
         CreateWindowExA(0, "BUTTON", "2. Instalar APK (USB)",
                         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
@@ -260,7 +270,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
             if (c != ' ' && c != '-') clean_pin.push_back(c);
         }
 
-        if (id == ID_BTN_INSTALL_OBS) {
+        if (id == ID_BTN_INSTALL_PLUGIN) {
             std::string status;
             install_zero_config_bundle(status, true);
             append_log(status);
@@ -304,8 +314,8 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--self-test") {
-            DiagnosticLogger::info("SelfTest", "CameraPhone-OBS.exe --self-test executed.");
-            std::cout << "[PASS] CameraPhone-OBS.exe desktop launcher self-test passed.\n";
+            DiagnosticLogger::info("SelfTest", "CameraPhone.exe --self-test executed.");
+            std::cout << "[PASS] CameraPhone.exe desktop launcher self-test passed.\n";
             return 0;
         }
         if (arg == "--elevated-install") {
@@ -327,14 +337,15 @@ int main(int argc, char** argv) {
     WNDCLASSA wc{};
     wc.lpfnWndProc   = WndProc;
     wc.hInstance     = GetModuleHandleA(nullptr);
-    wc.lpszClassName = "CameraPhoneOBSCompanionWnd";
+    wc.lpszClassName = "CameraPhoneCompanionWnd";
     wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
+    wc.hIcon         = LoadIconA(wc.hInstance, MAKEINTRESOURCEA(1));
     g_bg_brush       = CreateSolidBrush(RGB(240, 242, 245));
     wc.hbrBackground = g_bg_brush;
     RegisterClassA(&wc);
 
     HWND hwnd = CreateWindowExA(
-        0, wc.lpszClassName, "CameraPhone OBS 4K Pro - Instalador & Central de Logs",
+        0, wc.lpszClassName, "CameraPhone 4K Pro - Instalador & Central de Logs",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE,
         CW_USEDEFAULT, CW_USEDEFAULT, 695, 500,
         nullptr, nullptr, wc.hInstance, nullptr

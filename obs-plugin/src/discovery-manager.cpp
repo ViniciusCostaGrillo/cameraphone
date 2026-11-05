@@ -55,11 +55,11 @@ static fs::path get_current_module_dir() {
 std::string DiscoveryManager::resolve_adb_path() {
     const fs::path mod_dir = get_current_module_dir();
     std::vector<fs::path> candidates = {
-        R"(C:\Program Files\obs-studio\data\obs-plugins\cameraphone-obs\adb\adb.exe)",
+        R"(C:\Program Files\obs-studio\data\obs-plugins\cameraphone\adb\adb.exe)",
         mod_dir / "adb" / "adb.exe",
         mod_dir / "adb.exe",
-        mod_dir.parent_path() / "data" / "obs-plugins" / "cameraphone-obs" / "adb" / "adb.exe",
-        mod_dir.parent_path().parent_path() / "data" / "obs-plugins" / "cameraphone-obs" / "adb" / "adb.exe",
+        mod_dir.parent_path() / "data" / "obs-plugins" / "cameraphone" / "adb" / "adb.exe",
+        mod_dir.parent_path().parent_path() / "data" / "obs-plugins" / "cameraphone" / "adb" / "adb.exe",
     };
 
 #ifdef _WIN32
@@ -82,12 +82,12 @@ std::string DiscoveryManager::resolve_adb_path() {
 std::string DiscoveryManager::resolve_apk_path() {
     const fs::path mod_dir = get_current_module_dir();
     std::vector<fs::path> candidates = {
-        R"(C:\Program Files\obs-studio\data\obs-plugins\cameraphone-obs\CameraPhone-OBS.apk)",
-        mod_dir / "CameraPhone-OBS.apk",
-        mod_dir.parent_path() / "CameraPhone-OBS.apk",
-        mod_dir.parent_path().parent_path() / "data" / "obs-plugins" / "cameraphone-obs" / "CameraPhone-OBS.apk",
-        R"(C:\Cameraphone Plugin OBS\dist\CameraPhone-OBS.apk)",
-        R"(C:\Cameraphone Plugin OBS\CameraPhone-OBS.apk)",
+        R"(C:\Program Files\obs-studio\data\obs-plugins\cameraphone\CameraPhone.apk)",
+        mod_dir / "CameraPhone.apk",
+        mod_dir.parent_path() / "CameraPhone.apk",
+        mod_dir.parent_path().parent_path() / "data" / "obs-plugins" / "cameraphone" / "CameraPhone.apk",
+        R"(C:\Cameraphone Plugin OBS\dist\CameraPhone.apk)",
+        R"(C:\Cameraphone Plugin OBS\CameraPhone.apk)",
         R"(C:\Cameraphone Plugin OBS\android-app\app\build\outputs\apk\debug\app-debug.apk)"
     };
     for (const auto& c : candidates) {
@@ -167,7 +167,7 @@ std::vector<DiscoveredDevice> DiscoveryManager::list_usb_devices(uint16_t local_
 bool DiscoveryManager::install_apk_and_launch_usb(std::string& out_status_message, uint16_t local_port, uint16_t remote_port) {
     const std::string apk_path = resolve_apk_path();
     if (apk_path.empty()) {
-        out_status_message = "Erro: CameraPhone-OBS.apk nao encontrado na pasta do plugin.";
+        out_status_message = "Erro: CameraPhone.apk nao encontrado na pasta do plugin.";
         return false;
     }
 
@@ -194,12 +194,12 @@ bool DiscoveryManager::install_apk_and_launch_usb(std::string& out_status_messag
 
     // Grant CAMERA & RECORD_AUDIO permissions and launch MainActivity automatically
     std::string dummy;
-    run_cmd_capture(adb + " -s " + serial + " shell pm grant com.cameraphone.obs android.permission.CAMERA 2>&1", dummy);
-    run_cmd_capture(adb + " -s " + serial + " shell pm grant com.cameraphone.obs android.permission.RECORD_AUDIO 2>&1", dummy);
-    run_cmd_capture(adb + " -s " + serial + " shell am start -n com.cameraphone.obs/.ui.MainActivity 2>&1", dummy);
+    run_cmd_capture(adb + " -s " + serial + " shell pm grant com.cameraphone.app android.permission.CAMERA 2>&1", dummy);
+    run_cmd_capture(adb + " -s " + serial + " shell pm grant com.cameraphone.app android.permission.RECORD_AUDIO 2>&1", dummy);
+    run_cmd_capture(adb + " -s " + serial + " shell am start -n com.cameraphone.app/.ui.MainActivity 2>&1", dummy);
     setup_adb_forward(serial, local_port, remote_port);
 
-    out_status_message = "APK instalado e aberto no celular (" + serial + ")! Tunel USB 127.0.0.1:" + std::to_string(local_port) + " pronto.";
+    out_status_message = "APK CameraPhone instalado e aberto no celular (" + serial + ")! Tunel USB 127.0.0.1:" + std::to_string(local_port) + " pronto.";
     return true;
 }
 

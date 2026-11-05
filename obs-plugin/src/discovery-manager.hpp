@@ -23,7 +23,7 @@ public:
     // Resolve path to adb.exe (bundled OBS data folder, Android SDK, or system PATH)
     static std::string resolve_adb_path();
 
-    // Resolve path to bundled CameraPhone-OBS.apk
+    // Resolve path to bundled CameraPhone.apk
     static std::string resolve_apk_path();
 
     // Enumerate connected Android devices via ADB and establish local port forwarding

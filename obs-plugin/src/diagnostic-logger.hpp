@@ -31,13 +31,13 @@ public:
         char appdata[MAX_PATH]{};
         DWORD len = GetEnvironmentVariableA("APPDATA", appdata, MAX_PATH);
         if (len > 0 && len < MAX_PATH) {
-            fs::path dir = fs::path(appdata) / "CameraPhoneOBS";
+            fs::path dir = fs::path(appdata) / "CameraPhone";
             std::error_code ec;
             fs::create_directories(dir, ec);
-            return dir / "cameraphone-obs.log";
+            return dir / "cameraphone.log";
         }
 #endif
-        return fs::current_path() / "cameraphone-obs.log";
+        return fs::current_path() / "cameraphone.log";
     }
 
     static void log(const char* level, const char* component, const std::string& message) {
@@ -76,7 +76,7 @@ public:
             int obs_level = 300; // LOG_INFO
             if (std::string(level) == "ERR ") obs_level = 100; // LOG_ERROR
             else if (std::string(level) == "WARN") obs_level = 200; // LOG_WARNING
-            s_blog(obs_level, "[CameraPhoneOBS][%s] %s", component, message.c_str());
+            s_blog(obs_level, "[CameraPhone][%s] %s", component, message.c_str());
         }
 #endif
     }

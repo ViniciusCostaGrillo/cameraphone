@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.cameraphone.obs"
-    android:versionCode="1"
-    android:versionName="1.0.0">
+    package="com.cameraphone.app"
+    android:versionCode="2"
+    android:versionName="2.0.0">
 
     <uses-sdk
         android:minSdkVersion="28"
@@ -20,7 +20,9 @@
 
     <application
         android:allowBackup="false"
-        android:label="CameraPhone OBS"
+        android:label="CameraPhone"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
         android:usesCleartextTraffic="false"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">

@@ -32,7 +32,21 @@ def run_tests(filter_class: str = ""):
         shutil.rmtree(classes_dir)
     classes_dir.mkdir(parents=True, exist_ok=True)
 
-    classpath = os.pathsep.join([ANDROID_JAR, JUNIT4_JAR, KOTLIN_STDLIB])
+    # Generate stub R.java for JVM unit tests
+    stub_r = BUILD_DIR / "R.java"
+    stub_r.write_text("""package com.cameraphone.app;
+public final class R {
+    public static final class mipmap {
+        public static final int ic_launcher = 0x7f010000;
+    }
+    public static final class drawable {
+        public static final int ic_launcher = 0x7f020000;
+    }
+}
+""", encoding="utf-8")
+    subprocess.run(["javac", "-d", str(classes_dir), str(stub_r)], check=True)
+
+    classpath = os.pathsep.join([ANDROID_JAR, JUNIT4_JAR, KOTLIN_STDLIB, str(classes_dir)])
     compile_cmd = [
         KOTLINC,
         "-classpath", classpath,

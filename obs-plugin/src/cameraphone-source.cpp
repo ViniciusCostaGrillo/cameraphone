@@ -378,7 +378,7 @@ static bool on_install_apk_clicked(obs_properties_t* props, obs_property_t*, voi
     }
 #ifdef _WIN32
     MessageBoxA(nullptr, msg.c_str(),
-                ok ? "CameraPhone OBS - APK Instalado via Cabo USB" : "CameraPhone OBS - Aviso USB",
+                ok ? "CameraPhone - APK Instalado via Cabo USB" : "CameraPhone - Aviso USB",
                 ok ? (MB_OK | MB_ICONINFORMATION) : (MB_OK | MB_ICONWARNING));
 #endif
     (void)props;
@@ -412,7 +412,7 @@ static bool on_connect_refresh_clicked(obs_properties_t* props, obs_property_t*,
 static bool on_show_logs_clicked(obs_properties_t*, obs_property_t*, void* data) {
     auto* ctx = static_cast<CameraPhoneSourceContext*>(data);
     std::ostringstream report;
-    report << "=== LOGS LOCAIS DO PLUGIN OBS (%APPDATA%\\CameraPhoneOBS\\cameraphone-obs.log) ===\r\n"
+    report << "=== LOGS LOCAIS DO PLUGIN (%APPDATA%\\CameraPhone\\cameraphone.log) ===\r\n"
            << DiagnosticLogger::read_tail(4096) << "\r\n";
 
     if (ctx) {
@@ -426,7 +426,7 @@ static bool on_show_logs_clicked(obs_properties_t*, obs_property_t*, void* data)
         }
     }
 #ifdef _WIN32
-    MessageBoxA(nullptr, report.str().c_str(), "CameraPhone OBS - Diagnostico Integrado (PC + APK)", MB_OK | MB_ICONINFORMATION);
+    MessageBoxA(nullptr, report.str().c_str(), "CameraPhone - Diagnostico Integrado (PC + APK)", MB_OK | MB_ICONINFORMATION);
 #endif
     return false;
 }
@@ -475,7 +475,7 @@ static obs_properties_t* source_get_properties(void* data) {
             props, "btn_connect", "Conectar / Atualizar Camera Agora",
             on_connect_refresh_clicked, ctx);
         api.obs_properties_add_button2(
-            props, "btn_logs", "Ver Logs de Diagnostico (OBS + Celular)",
+            props, "btn_logs", "Ver Logs de Diagnostico (PC + Celular)",
             on_show_logs_clicked, ctx);
     }
 
@@ -632,7 +632,7 @@ void register_cameraphone_source() {
 
     static obs_source_info_v30 info{};
     std::memset(&info, 0, sizeof(info));
-    info.id             = "cameraphone_obs_source";
+    info.id             = "cameraphone_source";
     info.type           = 0;    // OBS_SOURCE_TYPE_INPUT
     info.output_flags   = 0x87; // OBS_SOURCE_VIDEO (1) | OBS_SOURCE_AUDIO (2) | OBS_SOURCE_ASYNC (4) | OBS_SOURCE_DO_NOT_DUPLICATE (0x80)
     info.get_name       = source_get_name;
@@ -648,7 +648,7 @@ void register_cameraphone_source() {
     info.icon_type      = 13;   // OBS_ICON_TYPE_CAMERA (0x0d)
 
     api.obs_register_source_s(&info, sizeof(info));
-    DiagnosticLogger::info("OBS-Plugin", "Registered cameraphone_obs_source (ABI v30, 0x198 bytes, icon_type=CAMERA)");
+    DiagnosticLogger::info("Plugin", "Registered cameraphone_source (ABI v30, 0x198 bytes, icon_type=CAMERA)");
 }
 
 } // namespace camphone

@@ -33,11 +33,11 @@ MODULE_EXPORT void obs_module_unload(void) {
 }
 
 MODULE_EXPORT const char* obs_module_name(void) {
-    return "CameraPhone 4K Pro OBS Plugin";
+    return "CameraPhone 4K Pro";
 }
 
 MODULE_EXPORT const char* obs_module_description(void) {
-    return "Zero-Trust, Zero-Freeze 4K60/120 HDR Smartphone Camera Plugin for OBS Studio";
+    return "Zero-Trust, Zero-Freeze 4K60/120 HDR Smartphone Camera Plugin";
 }
 
 } // extern "C"
