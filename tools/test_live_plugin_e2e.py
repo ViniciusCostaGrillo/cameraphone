@@ -203,7 +203,7 @@ def run_live_emulator_session(frames_path: Path, connect_host: str, init_codec: 
     gui_thread.start()
 
     proc = subprocess.Popen(
-        ["java", "-cp", cp, "com.cameraphone.emulator.LiveAndroidEmulatorServer", str(frames_path), "8"],
+        ["java", "-cp", cp, "com.cameraphone.emulator.LiveAndroidEmulatorServer", str(frames_path), "20"],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True

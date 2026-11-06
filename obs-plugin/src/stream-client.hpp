@@ -63,9 +63,10 @@ public:
     bool is_connected() const noexcept { return connected_.load(); }
 
 private:
-    std::atomic<bool> running_{false};
-    std::atomic<bool> connected_{false};
-    std::thread       worker_;
+    std::atomic<bool>      running_{false};
+    std::atomic<bool>      connected_{false};
+    std::atomic<uintptr_t> active_sock_{static_cast<uintptr_t>(~0ULL)};
+    std::thread            worker_;
 };
 
 } // namespace camphone

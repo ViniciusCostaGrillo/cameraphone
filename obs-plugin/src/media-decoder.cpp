@@ -331,6 +331,12 @@ void MediaDecoder::shutdown() {
     if (a_pkt_ && free_pkt) free_pkt(&a_pkt_);
     if (a_frame_ && free_frm) free_frm(&a_frame_);
     if (a_ctx_ && free_ctx) free_ctx(&a_ctx_);
+    v_pkt_ = nullptr;
+    v_frame_ = nullptr;
+    v_ctx_ = nullptr;
+    a_pkt_ = nullptr;
+    a_frame_ = nullptr;
+    a_ctx_ = nullptr;
 #endif
 }
 

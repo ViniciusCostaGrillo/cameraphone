@@ -9,6 +9,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <mutex>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -200,27 +201,39 @@ struct ObsApi {
 };
 
 struct CameraPhoneSourceContext {
-    obs_source_t*      source = nullptr;
-    std::string        conn_mode = "usb"; // "usb" or "wifi"
-    std::string        status_message = "Pronto. Selecione Cabo USB (Zero-Config) ou IP Wi-Fi.";
-    StreamConfig       config{};
-    DeviceCapabilities capabilities{};
-    BoundedFrameQueue  video_queue{60};
-    BoundedFrameQueue  audio_queue{60};
-    StreamClient       client{};
-    MediaDecoder       decoder{};
-    std::atomic<bool>  decode_running{false};
-    std::thread        decode_thread{};
+    obs_source_t*        source = nullptr;
+    std::string          conn_mode = "usb"; // "usb" or "wifi"
+    std::string          status_message = "Pronto. Selecione Cabo USB (Zero-Config) ou IP Wi-Fi.";
+    StreamConfig         config{};
+    DeviceCapabilities   capabilities{};
+    BoundedFrameQueue    video_queue{60};
+    BoundedFrameQueue    audio_queue{60};
+    StreamClient         client{};
+    MediaDecoder         decoder{};
+    std::atomic<bool>    decode_running{false};
+    std::thread          decode_thread{};
+    std::recursive_mutex pipeline_mutex{};
 
     void start_pipeline() {
-        stop_pipeline();
+        std::lock_guard<std::recursive_mutex> lock(pipeline_mutex);
+        stop_pipeline_locked();
+
+        video_queue.clear();
+        audio_queue.clear();
+
         if (conn_mode == "usb") {
             config.host = "127.0.0.1";
             if (config.pin.empty()) {
                 config.pin = "usb-zero-config";
             }
             DiscoveryManager::ensure_usb_tunnel_ready(config.port, config.port, true);
+        } else {
+            if (config.pin.length() != 6) {
+                DiagnosticLogger::info("OBS-Source", "Wi-Fi PIN incomplete (" + std::to_string(config.pin.length()) + "/6 digits). Awaiting complete PIN.");
+                return;
+            }
         }
+
         DiagnosticLogger::info("OBS-Source", "Starting pipeline: mode=" + conn_mode + " host=" + config.host + ":" + std::to_string(config.port) + " res=" + std::to_string(config.width) + "x" + std::to_string(config.height) + "@" + std::to_string(config.fps) + " codec=" + config.codec);
 
         decoder.initialize_video(config.codec);
@@ -238,7 +251,11 @@ struct CameraPhoneSourceContext {
                 auto vpkt = video_queue.pop();
                 if (vpkt.has_value()) {
                     decoder.decode_video_packet(*vpkt, [&](const DecodedVideoFrame& vf) {
-                        if (source && (api.obs_source_output_video2 || api.obs_source_output_video)) {
+                        if (!decode_running.load()) return;
+                        obs_source_t* src = source;
+                        if (!src) return;
+
+                        if (api.obs_source_output_video2 || api.obs_source_output_video) {
                             obs_source_frame2_v30 of{};
                             std::memset(&of, 0, sizeof(of));
                             for (int i = 0; i < 8; ++i) {
@@ -252,8 +269,6 @@ struct CameraPhoneSourceContext {
                             of.range = 1; // VIDEO_RANGE_PARTIAL
                             of.trc = vf.is_hdr_p010 ? 3 : 1; // 3 = VIDEO_TRC_HLG, 1 = VIDEO_TRC_DEFAULT (Rec.709)
 
-                            // Populate color_matrix, color_range_min, color_range_max via OBS's video_format_get_parameters_for_format
-                            // exactly as droidcam-obs.dll (FUN_180100c30) does so the OBS GPU shader does NOT render black!
                             int colorspace = vf.is_hdr_p010 ? 4 : 2; // 4 = VIDEO_CS_2100_HLG, 2 = VIDEO_CS_709
                             if (api.video_format_get_parameters_for_format) {
                                 api.video_format_get_parameters_for_format(
@@ -265,7 +280,6 @@ struct CameraPhoneSourceContext {
                                     of.color_range_max
                                 );
                             } else {
-                                // Fallback Rec.709 partial range matrix if symbol unavailable
                                 const float rec709[16] = {
                                     1.164384f,  0.000000f,  1.792741f, -0.972945f,
                                     1.164384f, -0.213249f, -0.532909f,  0.301483f,
@@ -282,9 +296,9 @@ struct CameraPhoneSourceContext {
                             }
 
                             if (api.obs_source_output_video2) {
-                                api.obs_source_output_video2(source, &of);
+                                api.obs_source_output_video2(src, &of);
                             } else {
-                                api.obs_source_output_video(source, &of);
+                                api.obs_source_output_video(src, &of);
                             }
                             ++rendered_frames;
                             if (rendered_frames == 1 || rendered_frames % 120 == 0) {
@@ -305,12 +319,19 @@ struct CameraPhoneSourceContext {
     }
 
     void stop_pipeline() {
+        std::lock_guard<std::recursive_mutex> lock(pipeline_mutex);
+        stop_pipeline_locked();
+    }
+
+    void stop_pipeline_locked() {
         decode_running.store(false);
         client.stop_streaming();
         if (decode_thread.joinable()) {
             decode_thread.join();
         }
         decoder.shutdown();
+        video_queue.clear();
+        audio_queue.clear();
     }
 };
 
@@ -582,6 +603,11 @@ static void source_update(void* data, obs_data_t* settings) {
     ctx->config.codec  = new_cdc;
     ctx->config.hdr    = hdr;
 
+    if (new_mode == "wifi" && new_pin.length() != 6) {
+        DiagnosticLogger::info("OBS-Source", "Wi-Fi PIN incomplete (" + std::to_string(new_pin.length()) + "/6 digits). Skipping auto-start.");
+        return;
+    }
+
     if (stream_changed && !new_pin.empty()) {
         ctx->start_pipeline();
     } else if (ctx->client.is_connected()) {
@@ -607,6 +633,7 @@ static void source_destroy(void* data) {
     auto* ctx = static_cast<CameraPhoneSourceContext*>(data);
     if (!ctx) return;
     DiagnosticLogger::info("OBS-Source", "Destroying CameraPhone 4K Pro source instance");
+    ctx->source = nullptr;
     ctx->stop_pipeline();
     delete ctx;
 }

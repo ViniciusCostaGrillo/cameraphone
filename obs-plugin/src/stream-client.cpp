@@ -271,7 +271,9 @@ void StreamClient::start_streaming(const StreamConfig& cfg, BoundedFrameQueue& v
                 if (cfg.host == "127.0.0.1" && cfg.pin == "usb-zero-config") {
                     DiscoveryManager::ensure_usb_tunnel_ready(cfg.port, cfg.port, true);
                 }
-                std::this_thread::sleep_for(std::chrono::milliseconds(800));
+                for (int i = 0; i < 8 && running_.load(); ++i) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                }
                 continue;
             }
 
@@ -290,6 +292,9 @@ void StreamClient::start_streaming(const StreamConfig& cfg, BoundedFrameQueue& v
                 continue;
             }
 
+            // Register active socket for immediate unblocking on stop_streaming()
+            active_sock_.store(static_cast<uintptr_t>(s));
+
             // Read HTTP response header until \r\n\r\n
             std::string http_hdr;
             char ch = 0;
@@ -298,14 +303,27 @@ void StreamClient::start_streaming(const StreamConfig& cfg, BoundedFrameQueue& v
                 http_hdr.push_back(ch);
             }
             if (http_hdr.find("200 OK") == std::string::npos) {
-                if (cfg.host == "127.0.0.1" && cfg.pin == "usb-zero-config" && http_hdr.empty()) {
+                if (http_hdr.find("429") != std::string::npos || http_hdr.find("Rate Limited") != std::string::npos) {
+                    DiagnosticLogger::warn("StreamClient", "GET /v1/stream rate limited (429) on " + cfg.host + " - backing off 5s");
+                    close_sock(s);
+                    active_sock_.store(static_cast<uintptr_t>(kInvalidSocket));
+                    connected_.store(false);
+                    // Back off 5s so phone rate limit lockout can reset
+                    for (int i = 0; i < 50 && running_.load(); ++i) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    }
+                    continue;
+                } else if (cfg.host == "127.0.0.1" && cfg.pin == "usb-zero-config" && http_hdr.empty()) {
                     DiscoveryManager::ensure_usb_tunnel_ready(cfg.port, cfg.port, true);
                 } else {
                     DiagnosticLogger::warn("StreamClient", "GET /v1/stream rejected on " + cfg.host + ": " + http_hdr.substr(0, http_hdr.find('\r')));
                 }
                 close_sock(s);
+                active_sock_.store(static_cast<uintptr_t>(kInvalidSocket));
                 connected_.store(false);
-                std::this_thread::sleep_for(std::chrono::milliseconds(1200));
+                for (int i = 0; i < 12 && running_.load(); ++i) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                }
                 continue;
             }
 
@@ -340,6 +358,7 @@ void StreamClient::start_streaming(const StreamConfig& cfg, BoundedFrameQueue& v
                 }
             }
             connected_.store(false);
+            active_sock_.store(static_cast<uintptr_t>(kInvalidSocket));
             close_sock(s);
         }
     });
@@ -348,6 +367,17 @@ void StreamClient::start_streaming(const StreamConfig& cfg, BoundedFrameQueue& v
 void StreamClient::stop_streaming() {
     running_.store(false);
     connected_.store(false);
+    uintptr_t raw = active_sock_.exchange(static_cast<uintptr_t>(kInvalidSocket));
+    if (raw != static_cast<uintptr_t>(kInvalidSocket)) {
+        socket_t s = static_cast<socket_t>(raw);
+#ifdef _WIN32
+        shutdown(s, SD_BOTH);
+        closesocket(s);
+#else
+        shutdown(s, SHUT_RDWR);
+        close(s);
+#endif
+    }
     if (worker_.joinable()) {
         worker_.join();
     }

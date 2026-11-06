@@ -65,7 +65,6 @@ class SecurityGate(
 
         val prefix = "Bearer "
         if (authHeader == null || !authHeader.startsWith(prefix)) {
-            recordFailure(remoteIp, now)
             return AuthResult.Unauthorized
         }
         val candidate = authHeader.substring(prefix.length).trim()
@@ -86,7 +85,9 @@ class SecurityGate(
             ipAttempts.remove(remoteIp)
             AuthResult.Authorized
         } else {
-            recordFailure(remoteIp, now)
+            if (candidate.length >= 4) {
+                recordFailure(remoteIp, now)
+            }
             AuthResult.Unauthorized
         }
     }
