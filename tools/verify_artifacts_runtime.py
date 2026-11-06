@@ -122,9 +122,29 @@ def verify_apk_package_and_bytecode():
 
     print(f"[PASS] APK Verification Test: {apk_path.name} cryptographic signatures (v1/v2/v3), custom launcher icon, package 'com.cameraphone.app', label 'CameraPhone', and all 10 DEX classes verified.")
 
+def verify_setup_runtime():
+    setup_path = DIST / "CameraPhone-Setup.exe"
+    assert setup_path.exists(), f"Missing {setup_path}"
+    assert setup_path.stat().st_size > 6 * 1024 * 1024, f"Setup exe too small: {setup_path.stat().st_size} bytes"
+
+    kernel32 = ctypes.windll.kernel32
+    kernel32.LoadLibraryExW.restype = ctypes.c_void_p
+    kernel32.FindResourceW.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+    kernel32.FindResourceW.restype = ctypes.c_void_p
+    hmod = kernel32.LoadLibraryExW(str(setup_path), None, 0x00000002)
+    assert hmod, "Failed to map CameraPhone-Setup.exe as datafile"
+    h_icon = kernel32.FindResourceW(hmod, ctypes.c_void_p(1), ctypes.c_void_p(14))
+    h_payload = kernel32.FindResourceW(hmod, ctypes.c_void_p(1001), ctypes.c_void_p(10)) # RT_RCDATA = 10, ID = 1001
+    kernel32.FreeLibrary(ctypes.c_void_p(hmod))
+
+    assert h_icon, "Missing icon resource in CameraPhone-Setup.exe"
+    assert h_payload, "Missing payload resource (1001) in CameraPhone-Setup.exe"
+    print(f"[PASS] Setup Runtime Test: {setup_path.name} ({setup_path.stat().st_size} bytes) with embedded payload.zip and icon verified.")
+
 if __name__ == "__main__":
     verify_dll_runtime()
     verify_vcam_runtime()
     verify_exe_runtime()
     verify_apk_package_and_bytecode()
-    print("[PASS] ALL SHIPPED ARTIFACTS (cameraphone.dll, cameraphone-vcam.dll, CameraPhone.exe, CameraPhone.apk) VERIFIED AND FUNCTIONAL!")
+    verify_setup_runtime()
+    print("[PASS] ALL SHIPPED ARTIFACTS (cameraphone.dll, cameraphone-vcam.dll, CameraPhone.exe, CameraPhone.apk, CameraPhone-Setup.exe) VERIFIED AND FUNCTIONAL!")

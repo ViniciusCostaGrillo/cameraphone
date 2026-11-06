@@ -364,4 +364,45 @@ No arquivo `obs-plugin/src/cameraphone-source.cpp`:
 - `source_get_width` e `source_get_height` retornam esses valores, conferindo à fonte CameraPhone comportamento 100% idêntico ao de uma webcam física USB.
 
 ---
+
+## 13. Resolução da 'Falha na Funcionalidade' no NVIDIA Broadcast & Novo Instalador Windows
+
+### 13.1. Diagnóstico da Causa Raiz do Erro -200 no NVIDIA Broadcast
+Ao selecionar a câmera virtual no aplicativo **NVIDIA Broadcast**, o usuário se deparava com o erro:
+`Falha na funcionalidade. Reinicie o aplicativo.`
+Nos arquivos de log de telemetria da NVIDIA (`C:\ProgramData\NVIDIA Corporation\NVIDIA Broadcast\logs\NVIDIA Broadcast.log`), a falha era registrada como `status: -200` durante a inicialização do pipeline Maxine AI.
+
+A investigação em nível binário revelou duas falhas críticas no filtro DirectShow COM:
+1. **Divergência de GUIDs COM nos Cabeçalhos Internos:**
+   - `IID_IMemInputPin`: estava definido incorretamente como `0x56a868a4`. A GUID canônica da Microsoft é `{56A8689D-0AD4-11CE-B03A-0020AF0BA770}`.
+   - `IID_IMemAllocator`: estava definido como `0x56a8685c`. A GUID canônica é `{56A8689C-0AD4-11CE-B03A-0020AF0BA770}`.
+   - `CLSID_MemoryAllocator`: estava com valores legados. A GUID correta é `{1E651CC0-B199-11D0-8212-00C04FC32C45}`.
+   - `IID_IAMFilterMiscFlags`: os 3 bytes finais estavam incorretos (`40, 52, 2e` em vez de `05, f3, 75`).
+   *Impacto:* Quando o NVIDIA Broadcast realizava `QueryInterface(IID_IMemInputPin)` no pino de captura da câmera virtual, a chamada falhava com `E_NOINTERFACE`. Sem o pino de memória de entrada, a thread de streaming não conseguia negociar o alocador e o Broadcast abortava com timeout de inicialização dos modelos TensorRT.
+2. **Ciclo de Vida do Alocador DirectShow (`Commit` e `Decommit`):**
+   - No DirectShow, um alocador de amostras de mídia (`IMemAllocator`) deve ser explicitamente colocado em estado comprometido (`Commit()`) antes de qualquer chamada a `GetBuffer()`.
+   - Se `Commit()` não for chamado durante as transições de estado `Pause()` e `Run()`, ou se `Decommit()` for omitido em `Stop()`, o alocador retorna imediatamente `VFW_E_NOT_COMMITTED` (`0x80040211`).
+
+### 13.2. Solução Implementada em `vcam/cameraphone-vcam.cpp`
+- Todas as GUIDs foram alinhadas com as definições canônicas comprovadas pelo script [`tests/test_all_guids.cpp`](file:///c:/Cameraphone%20Plugin%20OBS/tests/test_all_guids.cpp).
+- Implementamos `m_pAllocator->Commit()` nos métodos `Pause()` e `Run()`, e `m_pAllocator->Decommit()` em `Stop()`.
+- Na função de loop de entrega de quadros (`WorkerLoop`), foi adicionado tratamento para recuperar automaticamente o alocador caso retorne `0x80040211`, garantindo robustez extrema sob flutuações de estado do player downstream.
+- Validação automatizada realizada via teste de grafo DirectShow completo em [`tests/test_vcam_graph_run.cpp`](file:///c:/Cameraphone%20Plugin%20OBS/tests/test_vcam_graph_run.cpp).
+
+### 13.3. Transmissão Direta por Cabo USB para o Broadcast (`UsbBroadcastFeeder`)
+Para liberar o funcionamento imediato do NVIDIA Broadcast sem exigir que o OBS Studio esteja aberto:
+- Implementamos na aplicação desktop `CameraPhone.exe` uma thread secundária de alimentação contínua (`UsbBroadcastFeeder`).
+- A thread monitora o dispositivo Android conectado via USB via ADB, garante o encaminhamento da porta TCP `4748` e conecta ao servidor interno com PIN `"usb-zero-config"`.
+- Os pacotes de vídeo são decodificados via `MediaDecoder` e gravados na memória compartilhada IPC (`VCamSharedMemoryWriter`).
+- Dessa forma, o usuário apenas conecta o celular no cabo USB e já pode abrir o NVIDIA Broadcast diretamente! Se o OBS for aberto em seguida, o sistema se adapta automaticamente.
+
+### 13.4. Arquitetura do Instalador do Windows (`CameraPhone-Setup.exe`)
+Criamos um instalador executável completo em C++20 nativo e Win32 puro:
+- **Design System Escuro:** Interface moderna seguindo a paleta Dark Slate (`#12161A`) e Ciano (`#00E5FF`) do ícone oficial.
+- **Pacote Compactado Embutido:** Contém `payload.zip` nos recursos Win32 (`RT_RCDATA` ID 1001), descompactado em tempo de execução via `tar.exe` nativo do Windows ou PowerShell.
+- **Registro do Sistema:** Adiciona a chave `CameraPhone` em `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` apontando para `"C:\Program Files\CameraPhone\CameraPhone.exe" --background`.
+- **Modo Background & Bandeja do Sistema:** Com a flag `--background`, o software inicia silenciosamente junto com o Windows, minimizado na bandeja do sistema (System Tray), deixando os túneis e a câmera virtual prontos para qualquer chamada de vídeo.
+- **Atalhos Shell:** Cria atalhos `.lnk` na Área de Trabalho e no Menu Iniciar utilizando `IShellLinkW`.
+
+---
 > *Documentação compilada em 2026 como base técnica oficial do projeto CameraPhone.*

@@ -7,14 +7,14 @@
 **Transforme seu smartphone Android em uma câmera de estúdio 4K60/120 FPS HDR 10-bit para o PC.**  
 *100% Gratuito • Zero Marca D'água • Suporte Nativo a NVIDIA Broadcast • Redimensionamento e Filtros no OBS • Segurança Zero-Trust Anti-Hacker • Arquitetura Zero-Freeze*
 
-[![Release](https://img.shields.io/github/v/release/ViniciusCostaGrillo/cameraphone?color=00E676&label=Release&style=for-the-badge&logo=github)](https://github.com/ViniciusCostaGrillo/cameraphone/releases/tag/v1.2.0)
-[![Windows](https://img.shields.io/badge/Windows-64--bit_Plugin_%26_VCam-0078D6?style=for-the-badge&logo=windows&logoColor=white)](dist/CameraPhone.exe)
+[![Release](https://img.shields.io/github/v/release/ViniciusCostaGrillo/cameraphone?color=00E676&label=Release&style=for-the-badge&logo=github)](https://github.com/ViniciusCostaGrillo/cameraphone/releases/tag/v1.3.0)
+[![Windows](https://img.shields.io/badge/Windows-Setup_Installer_%26_VCam-0078D6?style=for-the-badge&logo=windows&logoColor=white)](dist/CameraPhone-Setup.exe)
 [![NVIDIA Broadcast](https://img.shields.io/badge/NVIDIA-Broadcast_Compatible-76B900?style=for-the-badge&logo=nvidia&logoColor=white)](dist/cameraphone-vcam.dll)
 [![Android](https://img.shields.io/badge/Android-9.0%2B_(API_28--34)-3DDC84?style=for-the-badge&logo=android&logoColor=white)](dist/CameraPhone.apk)
 [![C++20](https://img.shields.io/badge/C%2B%2B-20_Native-00599C?style=for-the-badge&logo=cplusplus&logoColor=white)](obs-plugin/)
 [![Kotlin](https://img.shields.io/badge/Kotlin-Camera2_%2B_MediaCodec-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)](android-app/)
 
-[📦 **Baixar Release Completa (ZIP)**](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.2.0/CameraPhone-v1.2.0-Windows.zip) • [🖥️ **Instalador Desktop (`CameraPhone.exe`)**](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.2.0/CameraPhone.exe) • [🤖 **App Android (`CameraPhone.apk`)**](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.2.0/CameraPhone.apk) • [🔌 **Plugin OBS (`cameraphone.dll`)**](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.2.0/cameraphone.dll) • [🎥 **Câmera Virtual NVIDIA (`cameraphone-vcam.dll`)**](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.2.0/cameraphone-vcam.dll)
+[🚀 **Baixar Instalador Windows (`CameraPhone-Setup.exe`)**](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.3.0/CameraPhone-Setup.exe) • [📦 **Baixar Pacote Portátil (ZIP)**](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.3.0/CameraPhone-v1.3.0-Windows.zip) • [🤖 **App Android (`CameraPhone.apk`)**](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.3.0/CameraPhone.apk) • [🔌 **Plugin OBS (`cameraphone.dll`)**](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.3.0/cameraphone.dll) • [🎥 **Câmera Virtual NVIDIA (`cameraphone-vcam.dll`)**](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.3.0/cameraphone-vcam.dll)
 
 </div>
 
@@ -126,46 +126,52 @@ Muitos utilitários de webcam expõem a porta de vídeo na rede local sem autent
 
 ---
 
-## 🎛️ Central Desktop & Instalador (`CameraPhone.exe`)
+## 🎛️ Central Desktop & Companion (`CameraPhone.exe`)
 
-O executável portátil [`CameraPhone.exe`](file:///c:/Cameraphone%20Plugin%20OBS/CameraPhone.exe) reúne todas as ferramentas de configuração, diagnóstico e instalação em uma interface gráfica moderna:
+O executável portátil [`CameraPhone.exe`](file:///c:/Cameraphone%20Plugin%20OBS/CameraPhone.exe) foi completamente redesenhado com base no design system escuro do ícone oficial (*Dark Slate* `#12161A`, detalhes em Ciano `#00E5FF` e console escuro `#0D1117`). A interface agora é limpa e intuitiva:
 
 ```
-+-------------------------------------------------------------------------------+
-|  CameraPhone 4K60/120 HDR - Instalador & Central de Logs            [🇧🇷 PT]   |
-+-------------------------------------------------------------------------------+
-|  Host (USB 127.0.0.1 ou IP Wi-Fi):           PIN Wi-Fi (Vazio no Cabo USB):   |
-|  [ 127.0.0.1                    ]           [                            ]   |
-+-------------------------------------------------------------------------------+
-| [1. Instalar Plugin] [2. Instalar APK] [3. Testar Conexao] [4. Ver Logs] [5. NVIDIA] |
-+-------------------------------------------------------------------------------+
-| ==================== DIAGNOSTICO INTEGRADO (PC + APK) =====================   |
-| [Log Central] Plugin cameraphone.dll + CameraPhone.apk + ADB instalados!      |
-| [DirectShow] 'CameraPhone Virtual Camera' registrada para NVIDIA Broadcast.   |
-| [StreamClient] Conectado: Samsung Galaxy S24 Ultra (Snapdragon 8 Gen 3) 4K60  |
-+-------------------------------------------------------------------------------+
++---------------------------------------------------------------------------------------+
+|  CameraPhone 4K Pro                                                        [ Idioma ] |
+|  Câmera Virtual NVIDIA Broadcast & Plugin OBS Zero-Config                             |
++---------------------------------------------------------------------------------------+
+| [1. Instalar Tudo]  [2. Instalar APK no Celular]  [3. Testar Conexao]  [4. Ver Logs]  |
++---------------------------------------------------------------------------------------+
+| CONSOLE DE DIAGNOSTICO EM TEMPO REAL                                                  |
+| ┌───────────────────────────────────────────────────────────────────────────────────┐ |
+| │ [ZERO-CONFIG INSTALADO COM SUCESSO]                                               │ |
+| │   * Plugin OBS: C:\Program Files\obs-studio\obs-plugins\64bit\cameraphone.dll     │ |
+| │   * Câmera Virtual: CameraPhone Virtual Camera (NVIDIA Broadcast pronta!)          │ |
+| │   * Driver ADB & APK atualizados para conexao USB plug-and-play.                  │ |
+| │ [Sistema] Transmissao USB direta para CameraPhone Virtual Camera ativa.           │ |
+| │ [Dica] No OBS: adicione 'CameraPhone 4K Pro' e selecione Cabo USB ou preencha IP. │ |
+| │ [Dica] No NVIDIA Broadcast: selecione 'CameraPhone Virtual Camera' na lista.      │ |
+| └───────────────────────────────────────────────────────────────────────────────────┘ |
++---------------------------------------------------------------------------------------+
 ```
 
-- **Botão 1 (Instalar Plugin):** Copia `cameraphone.dll` e motor ADB diretamente para a pasta oficial do OBS Studio (`C:\Program Files\obs-studio\obs-plugins\64bit\`).
-- **Botão 2 (Instalar APK via USB):** Detecta celulares conectados via cabo e instala o app `CameraPhone.apk` com todas as permissões.
-- **Botão 3 (Testar Conexão):** Consulta as capacidades de hardware do smartphone (sensores, codecs HEVC/AV1, lentes físicas e suporte a HDR10).
-- **Botão 4 (Ver Logs Integrados):** Exibe simultaneamente os logs locais do PC (`%APPDATA%\CameraPhone\cameraphone.log`) e os logs internos do smartphone via rota `/v1/logs`.
-- **Botão 5 (NVIDIA Broadcast):** Registra a câmera virtual DirectShow no Windows, pronta para seleção no aplicativo da NVIDIA.
-- **Seletor de Idiomas (PT / EN):** Alterne a interface gráfica entre Português e Inglês com um clique.
+- **Transmissão Direta para o NVIDIA Broadcast por Cabo:** Ao conectar o smartphone via USB, o Companion detecta o aparelho e alimenta imediatamente a câmera virtual DirectShow sem precisar que o OBS Studio esteja aberto.
+- **Botão 1 (Instalar Tudo):** Instala o plugin no OBS Studio, registra a câmera virtual DirectShow no Windows e copia o APK e ADB.
+- **Botão 2 (Instalar APK no Celular):** Instala o aplicativo `CameraPhone.apk` no smartphone via cabo USB com todas as permissões concedidas em 1 clique.
+- **Botão 3 (Testar Conexão):** Testa o link USB, abre o túnel na porta `4748` e exibe na tela todas as especificações do aparelho (modelo, SoC, sensores e lentes físicas).
+- **Botão 4 (Ver Logs):** Abre os logs locais do PC e os logs internos do smartphone em tempo real no console amplo.
+- **Botão de Idioma:** Alterne instantaneamente entre `Idioma` (PT) e `Language` (EN).
+- **Modo Silencioso / Bandeja do Sistema:** Com a flag `--background`, o aplicativo inicia junto com o Windows minimizado na barra de tarefas (System Tray), deixando a câmera virtual sempre pronta para o NVIDIA Broadcast e Discord.
 
 ---
 
-## 📦 Tabela de Downloads dos Binários Oficiais
+## 📦 Tabela de Downloads dos Binários Oficiais (v1.3.0)
 
 Todos os binários oficiais pré-compilados, assinados criptograficamente e sem dependências externas estão disponíveis na release oficial:
 
 | Arquivo | Tamanho | Descrição | Download Direto |
 | :--- | :---: | :--- | :---: |
-| 🗜️ **`CameraPhone-v1.2.0-Windows.zip`** | 6.3 MB | **Pacote Completo Portátil** (EXE, APK, Plugins, VCam e ADB) | [Baixar ZIP](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.2.0/CameraPhone-v1.2.0-Windows.zip) |
-| 🖥️ **`CameraPhone.exe`** | 1.7 MB | **Instalador Zero-Config, Central de Logs & Ativador VCam** | [Baixar EXE](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.2.0/CameraPhone.exe) |
-| 📱 **`CameraPhone.apk`** | 861 KB | **Aplicativo Android Oficial Assinado** (com PIN persistente) | [Baixar APK](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.2.0/CameraPhone.apk) |
-| 🔌 **`cameraphone.dll`** | 1.7 MB | **Plugin Nativo OBS Studio 64-bit** (com redimensionamento livre) | [Baixar DLL](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.2.0/cameraphone.dll) |
-| 🎥 **`cameraphone-vcam.dll`** | 840 KB | **Câmera Virtual DirectShow para NVIDIA Broadcast** | [Baixar VCam](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.2.0/cameraphone-vcam.dll) |
+| 🚀 **`CameraPhone-Setup.exe`** | 8.3 MB | **Instalador Completo do Windows** (Instala tudo, cria atalhos e autostart) | [Baixar Instalador](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.3.0/CameraPhone-Setup.exe) |
+| 🗜️ **`CameraPhone-v1.3.0-Windows.zip`** | 6.3 MB | **Pacote Completo Portátil** (Setup, EXE, APK, Plugins, VCam e ADB) | [Baixar ZIP](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.3.0/CameraPhone-v1.3.0-Windows.zip) |
+| 🖥️ **`CameraPhone.exe`** | 1.7 MB | **Companion Desktop Redesenhado & Alimentador USB da VCam** | [Baixar EXE](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.3.0/CameraPhone.exe) |
+| 📱 **`CameraPhone.apk`** | 861 KB | **Aplicativo Android Oficial Assinado** (com PIN persistente) | [Baixar APK](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.3.0/CameraPhone.apk) |
+| 🔌 **`cameraphone.dll`** | 1.7 MB | **Plugin Nativo OBS Studio 64-bit** (com redimensionamento e máscaras) | [Baixar DLL](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.3.0/cameraphone.dll) |
+| 🎥 **`cameraphone-vcam.dll`** | 840 KB | **Câmera Virtual DirectShow para NVIDIA Broadcast (Correção -200)** | [Baixar VCam](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.3.0/cameraphone-vcam.dll) |
 
 ---
 

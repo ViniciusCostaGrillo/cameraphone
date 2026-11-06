@@ -92,8 +92,9 @@ def build_desktop_exe():
         str(ROOT.parent / "desktop-app" / "cameraphone_companion.cpp"),
         str(SRC / "discovery-manager.cpp"),
         str(SRC / "stream-client.cpp"),
+        str(SRC / "media-decoder.cpp"),
     ] + extra_objs + [
-        "-lws2_32", "-lgdi32", "-luser32", "-lshell32",
+        "-lws2_32", "-lgdi32", "-luser32", "-lshell32", "-ldwmapi", "-lole32", "-loleaut32",
         "-o", str(out_exe)
     ]
     print("[Build EXE]", " ".join(cmd))

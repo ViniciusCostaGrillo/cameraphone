@@ -36,7 +36,7 @@ static const GUID PIN_CATEGORY_CAPTURE_Local =
 static const GUID AMPROPSETID_Pin_Local =
     { 0x9b00f101, 0x1567, 0x11d1, { 0xb3, 0xf1, 0x00, 0xaa, 0x00, 0x37, 0x61, 0xc5 } };
 static const GUID CLSID_MemoryAllocator_Local =
-    { 0x1e651d27, 0xcb60, 0x11d0, { 0x8d, 0x0f, 0x00, 0xa0, 0xc9, 0x03, 0x91, 0xb3 } };
+    { 0x1e651cc0, 0xb199, 0x11d0, { 0x82, 0x12, 0x00, 0xc0, 0x4f, 0xc3, 0x2c, 0x45 } };
 
 static const GUID IID_IPin_Local =
     { 0x56a86891, 0x0ad4, 0x11ce, { 0xb0, 0x3a, 0x00, 0x20, 0xaf, 0x0b, 0xa7, 0x70 } };
@@ -49,15 +49,15 @@ static const GUID IID_IMediaFilter_Local =
 static const GUID IID_IBaseFilter_Local =
     { 0x56a86895, 0x0ad4, 0x11ce, { 0xb0, 0x3a, 0x00, 0x20, 0xaf, 0x0b, 0xa7, 0x70 } };
 static const GUID IID_IMemInputPin_Local =
-    { 0x56a868a4, 0x0ad4, 0x11ce, { 0xb0, 0x3a, 0x00, 0x20, 0xaf, 0x0b, 0xa7, 0x70 } };
+    { 0x56a8689d, 0x0ad4, 0x11ce, { 0xb0, 0x3a, 0x00, 0x20, 0xaf, 0x0b, 0xa7, 0x70 } };
 static const GUID IID_IMemAllocator_Local =
-    { 0x56a8685c, 0x0ad4, 0x11ce, { 0xb0, 0x3a, 0x00, 0x20, 0xaf, 0x0b, 0xa7, 0x70 } };
+    { 0x56a8689c, 0x0ad4, 0x11ce, { 0xb0, 0x3a, 0x00, 0x20, 0xaf, 0x0b, 0xa7, 0x70 } };
 static const GUID IID_IAMStreamConfig_Local =
     { 0xc6e13340, 0x30ac, 0x11d0, { 0xa1, 0x8c, 0x00, 0xa0, 0xc9, 0x11, 0x89, 0x56 } };
 static const GUID IID_IKsPropertySet_Local =
     { 0x31efac30, 0x515c, 0x11d0, { 0xa9, 0xaa, 0x00, 0xaa, 0x00, 0x61, 0xbe, 0x93 } };
 static const GUID IID_IAMFilterMiscFlags_Local =
-    { 0x2dd74950, 0xa890, 0x11d1, { 0xab, 0xe8, 0x00, 0xa0, 0xc9, 0x40, 0x52, 0x2e } };
+    { 0x2dd74950, 0xa890, 0x11d1, { 0xab, 0xe8, 0x00, 0xa0, 0xc9, 0x05, 0xf3, 0x75 } };
 static const GUID IID_IQualityControl_Local =
     { 0x56a868a5, 0x0ad4, 0x11ce, { 0xb0, 0x3a, 0x00, 0x20, 0xaf, 0x0b, 0xa7, 0x70 } };
 
@@ -458,6 +458,7 @@ STDMETHODIMP CVCamOutputPin::Connect(IPin* pReceivePin, const AM_MEDIA_TYPE* pmt
             prop.cbAlign = 1;
             m_pAllocator->SetProperties(&prop, &actual);
             m_pMemInputPin->NotifyAllocator(m_pAllocator, FALSE);
+            m_pAllocator->Commit();
         }
     }
 
@@ -700,16 +701,25 @@ STDMETHODIMP CVCamFilter::GetClassID(CLSID* pClassID) {
 
 STDMETHODIMP CVCamFilter::Stop() {
     StopWorker();
+    if (m_pPin && m_pPin->GetAllocator()) {
+        m_pPin->GetAllocator()->Decommit();
+    }
     m_State = State_Stopped;
     return S_OK;
 }
 
 STDMETHODIMP CVCamFilter::Pause() {
+    if (m_pPin && m_pPin->GetAllocator()) {
+        m_pPin->GetAllocator()->Commit();
+    }
     m_State = State_Paused;
     return S_OK;
 }
 
 STDMETHODIMP CVCamFilter::Run(REFERENCE_TIME) {
+    if (m_pPin && m_pPin->GetAllocator()) {
+        m_pPin->GetAllocator()->Commit();
+    }
     m_State = State_Running;
     StartWorker();
     return S_OK;
@@ -816,6 +826,10 @@ void CVCamFilter::WorkerLoop() {
 
         IMediaSample* pSample = nullptr;
         HRESULT hr = allocator->GetBuffer(&pSample, nullptr, nullptr, 0);
+        if (hr == static_cast<HRESULT>(0x80040211L) /* VFW_E_NOT_COMMITTED */) {
+            allocator->Commit();
+            hr = allocator->GetBuffer(&pSample, nullptr, nullptr, 0);
+        }
         if (FAILED(hr) || !pSample) {
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
             continue;
