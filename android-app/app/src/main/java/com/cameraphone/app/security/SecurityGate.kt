@@ -34,12 +34,14 @@ data class RawControlPatch(
 )
 
 class SecurityGate(
-    private val clockMs: () -> Long = { System.currentTimeMillis() }
+    private val clockMs: () -> Long = { System.currentTimeMillis() },
+    initialPin: String? = null,
+    private val onPinChanged: ((String) -> Unit)? = null
 ) {
     private val csprng = SecureRandom()
 
     @Volatile
-    var currentPin: String = generateSixDigitPin()
+    var currentPin: String = initialPin?.takeIf { it.length == 6 && it.all(Char::isDigit) } ?: generateSixDigitPin()
         private set
 
     private data class AttemptRecord(val failures: Int, val lockedUntilMs: Long)
@@ -48,7 +50,12 @@ class SecurityGate(
     fun rotatePin(): String {
         currentPin = generateSixDigitPin()
         ipAttempts.clear()
+        onPinChanged?.invoke(currentPin)
         return currentPin
+    }
+
+    fun resetLockouts() {
+        ipAttempts.clear()
     }
 
     private fun generateSixDigitPin(): String {

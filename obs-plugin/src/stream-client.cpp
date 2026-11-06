@@ -303,8 +303,18 @@ void StreamClient::start_streaming(const StreamConfig& cfg, BoundedFrameQueue& v
                 http_hdr.push_back(ch);
             }
             if (http_hdr.find("200 OK") == std::string::npos) {
-                if (http_hdr.find("429") != std::string::npos || http_hdr.find("Rate Limited") != std::string::npos) {
-                    DiagnosticLogger::warn("StreamClient", "GET /v1/stream rate limited (429) on " + cfg.host + " - backing off 5s");
+                if (http_hdr.find("401 Unauthorized") != std::string::npos || http_hdr.find("invalid_pin") != std::string::npos) {
+                    DiagnosticLogger::error("StreamClient", "GET /v1/stream rejeitado: 401 Unauthorized no host " + cfg.host + ". Verifique o PIN de 6 digitos no aplicativo do celular.");
+                    close_sock(s);
+                    active_sock_.store(static_cast<uintptr_t>(kInvalidSocket));
+                    connected_.store(false);
+                    // Back off 5s so phone does not lock out IP with 429
+                    for (int i = 0; i < 50 && running_.load(); ++i) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    }
+                    continue;
+                } else if (http_hdr.find("429") != std::string::npos || http_hdr.find("Rate Limited") != std::string::npos) {
+                    DiagnosticLogger::warn("StreamClient", "GET /v1/stream rate limited (429) no host " + cfg.host + " - aguardando 5s (abra o app no celular para desbloquear)");
                     close_sock(s);
                     active_sock_.store(static_cast<uintptr_t>(kInvalidSocket));
                     connected_.store(false);

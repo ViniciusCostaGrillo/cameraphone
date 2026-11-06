@@ -96,6 +96,19 @@ static bool install_zero_config_bundle(std::string& out_msg, bool allow_uac_prom
     const fs::path dll_dst = obs_plugins_dir / "cameraphone.dll";
     fs::copy_file(dll_src, dll_dst, fs::copy_options::overwrite_existing, ec);
 
+    const fs::path vcam_src = find_file_in_candidates({
+        exe_dir / "cameraphone-vcam.dll",
+        exe_dir / "dist" / "cameraphone-vcam.dll",
+        R"(C:\Cameraphone Plugin OBS\dist\cameraphone-vcam.dll)",
+        R"(C:\Cameraphone Plugin OBS\cameraphone-vcam.dll)"
+    });
+    if (!vcam_src.empty()) {
+        const fs::path vcam_dst = obs_plugins_dir / "cameraphone-vcam.dll";
+        fs::copy_file(vcam_src, vcam_dst, fs::copy_options::overwrite_existing, ec);
+        std::string reg_cmd = "regsvr32.exe /s \"" + (ec ? vcam_src.string() : vcam_dst.string()) + "\"";
+        system(reg_cmd.c_str());
+    }
+
     if (!ec) {
         if (!apk_src.empty()) {
             fs::copy_file(apk_src, obs_data_dir / "CameraPhone.apk", fs::copy_options::overwrite_existing, ec);
@@ -164,6 +177,7 @@ enum ControlIds : int {
     ID_BTN_PROBE_CAPS     = 103,
     ID_BTN_VIEW_LOGS      = 107,
     ID_BTN_TOGGLE_LANG    = 108,
+    ID_BTN_INSTALL_VCAM   = 109,
     ID_EDIT_HOST          = 104,
     ID_EDIT_PIN           = 105,
     ID_EDIT_LOG           = 106
@@ -176,6 +190,7 @@ static HWND g_btn_install_hwnd = nullptr;
 static HWND g_btn_usb_hwnd     = nullptr;
 static HWND g_btn_probe_hwnd   = nullptr;
 static HWND g_btn_logs_hwnd    = nullptr;
+static HWND g_btn_vcam_hwnd    = nullptr;
 static HWND g_btn_lang_hwnd    = nullptr;
 static HWND g_edit_host        = nullptr;
 static HWND g_edit_pin         = nullptr;
@@ -191,7 +206,8 @@ static void update_ui_language(HWND hwnd) {
         if (g_btn_install_hwnd) SetWindowTextA(g_btn_install_hwnd, "1. Instalar Plugin");
         if (g_btn_usb_hwnd) SetWindowTextA(g_btn_usb_hwnd, "2. Instalar APK (USB)");
         if (g_btn_probe_hwnd) SetWindowTextA(g_btn_probe_hwnd, "3. Testar Conexao");
-        if (g_btn_logs_hwnd) SetWindowTextA(g_btn_logs_hwnd, "4. Ver Logs (PC + APK)");
+        if (g_btn_logs_hwnd) SetWindowTextA(g_btn_logs_hwnd, "4. Ver Logs");
+        if (g_btn_vcam_hwnd) SetWindowTextA(g_btn_vcam_hwnd, "5. NVIDIA Broadcast");
         if (g_btn_lang_hwnd) SetWindowTextA(g_btn_lang_hwnd, "🇧🇷 PT");
     } else {
         SetWindowTextA(hwnd, "CameraPhone 4K Pro - Installer & Log Center");
@@ -201,7 +217,8 @@ static void update_ui_language(HWND hwnd) {
         if (g_btn_install_hwnd) SetWindowTextA(g_btn_install_hwnd, "1. Install Plugin");
         if (g_btn_usb_hwnd) SetWindowTextA(g_btn_usb_hwnd, "2. Install APK (USB)");
         if (g_btn_probe_hwnd) SetWindowTextA(g_btn_probe_hwnd, "3. Test Connection");
-        if (g_btn_logs_hwnd) SetWindowTextA(g_btn_logs_hwnd, "4. View Logs (PC + APK)");
+        if (g_btn_logs_hwnd) SetWindowTextA(g_btn_logs_hwnd, "4. View Logs");
+        if (g_btn_vcam_hwnd) SetWindowTextA(g_btn_vcam_hwnd, "5. NVIDIA Broadcast");
         if (g_btn_lang_hwnd) SetWindowTextA(g_btn_lang_hwnd, "🇺🇸 EN");
     }
 }
@@ -274,23 +291,27 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
 
         g_btn_install_hwnd = CreateWindowExA(0, "BUTTON", "1. Instalar Plugin",
                                              WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                                             20, 110, 145, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_INSTALL_PLUGIN), nullptr, nullptr);
+                                             20, 110, 130, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_INSTALL_PLUGIN), nullptr, nullptr);
 
         g_btn_usb_hwnd = CreateWindowExA(0, "BUTTON", "2. Instalar APK (USB)",
                                          WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                                         175, 110, 160, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_SETUP_USB), nullptr, nullptr);
+                                         156, 110, 150, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_SETUP_USB), nullptr, nullptr);
 
         g_btn_probe_hwnd = CreateWindowExA(0, "BUTTON", "3. Testar Conexao",
                                            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                                           345, 110, 145, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_PROBE_CAPS), nullptr, nullptr);
+                                           312, 110, 130, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_PROBE_CAPS), nullptr, nullptr);
 
-        g_btn_logs_hwnd = CreateWindowExA(0, "BUTTON", "4. Ver Logs (PC + APK)",
+        g_btn_logs_hwnd = CreateWindowExA(0, "BUTTON", "4. Ver Logs",
                                           WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                                          500, 110, 160, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_VIEW_LOGS), nullptr, nullptr);
+                                          448, 110, 110, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_VIEW_LOGS), nullptr, nullptr);
+
+        g_btn_vcam_hwnd = CreateWindowExA(0, "BUTTON", "5. NVIDIA Broadcast",
+                                          WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                                          564, 110, 140, 34, hwnd, reinterpret_cast<HMENU>(ID_BTN_INSTALL_VCAM), nullptr, nullptr);
 
         g_edit_log = CreateWindowExA(WS_EX_CLIENTEDGE, "EDIT", "",
                                      WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
-                                     20, 156, 640, 290, hwnd, reinterpret_cast<HMENU>(ID_EDIT_LOG), nullptr, nullptr);
+                                     20, 156, 684, 290, hwnd, reinterpret_cast<HMENU>(ID_EDIT_LOG), nullptr, nullptr);
         SendMessageA(g_edit_log, WM_SETFONT, reinterpret_cast<WPARAM>(font_ui), TRUE);
 
         std::string auto_install_msg;
@@ -360,6 +381,28 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
             }
         } else if (id == ID_BTN_VIEW_LOGS) {
             fetch_and_display_all_logs(host_s, clean_pin);
+        } else if (id == ID_BTN_INSTALL_VCAM) {
+            const fs::path exe_dir = get_exe_dir();
+            const fs::path vcam_src = find_file_in_candidates({
+                exe_dir / "cameraphone-vcam.dll",
+                exe_dir / "dist" / "cameraphone-vcam.dll",
+                R"(C:\Program Files\obs-studio\obs-plugins\64bit\cameraphone-vcam.dll)",
+                R"(C:\Cameraphone Plugin OBS\dist\cameraphone-vcam.dll)",
+                R"(C:\Cameraphone Plugin OBS\cameraphone-vcam.dll)"
+            });
+            if (vcam_src.empty()) {
+                append_log("[ERRO] Arquivo cameraphone-vcam.dll nao encontrado.");
+            } else {
+                std::string reg_cmd = "regsvr32.exe /s \"" + vcam_src.string() + "\"";
+                int rc = system(reg_cmd.c_str());
+                if (rc == 0) {
+                    append_log("[CAMERA VIRTUAL DIRECTSHOW ATIVA]");
+                    append_log("  -> 'CameraPhone Virtual Camera' registrada com sucesso no Windows!");
+                    append_log("  -> Abra o NVIDIA Broadcast e selecione 'CameraPhone Virtual Camera' para aplicar os efeitos de IA (Fundo, Enquadramento, Contato Visual).");
+                } else {
+                    append_log("[AVISO] Falha ao registrar cameraphone-vcam.dll (codigo " + std::to_string(rc) + ").");
+                }
+            }
         }
         return 0;
     }
@@ -407,7 +450,7 @@ int main(int argc, char** argv) {
     HWND hwnd = CreateWindowExA(
         0, wc.lpszClassName, "CameraPhone 4K Pro - Instalador & Central de Logs",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE,
-        CW_USEDEFAULT, CW_USEDEFAULT, 695, 500,
+        CW_USEDEFAULT, CW_USEDEFAULT, 740, 505,
         nullptr, nullptr, wc.hInstance, nullptr
     );
     if (!hwnd) return 1;

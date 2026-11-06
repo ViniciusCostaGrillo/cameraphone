@@ -8,6 +8,8 @@ build/
 local.properties
 .superpowers/
 protocol/test_protocol.exe
+tests/*.exe
+*.res
 !dist/
 !dist/*.exe
 !dist/*.dll

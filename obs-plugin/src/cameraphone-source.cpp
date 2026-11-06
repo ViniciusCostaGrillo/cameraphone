@@ -3,6 +3,7 @@
 #include "discovery-manager.hpp"
 #include "media-decoder.hpp"
 #include "stream-client.hpp"
+#include "vcam_shmem.hpp"
 #include <atomic>
 #include <cstring>
 #include <memory>
@@ -210,9 +211,12 @@ struct CameraPhoneSourceContext {
     BoundedFrameQueue    audio_queue{60};
     StreamClient         client{};
     MediaDecoder         decoder{};
-    std::atomic<bool>    decode_running{false};
-    std::thread          decode_thread{};
-    std::recursive_mutex pipeline_mutex{};
+    std::atomic<bool>     decode_running{false};
+    std::thread           decode_thread{};
+    std::recursive_mutex  pipeline_mutex{};
+    std::atomic<uint32_t> current_width{1920};
+    std::atomic<uint32_t> current_height{1080};
+    VCamSharedMemoryWriter vcam_writer{};
 
     void start_pipeline() {
         std::lock_guard<std::recursive_mutex> lock(pipeline_mutex);
@@ -240,7 +244,12 @@ struct CameraPhoneSourceContext {
         decoder.initialize_audio();
         if (client.fetch_capabilities(config.host, config.port, config.pin, capabilities)) {
             status_message = "Conectado: " + capabilities.device_model + " (" + config.host + ":" + std::to_string(config.port) + ")";
+        } else {
+            if (conn_mode == "wifi") {
+                status_message = "Aguardando conexao / Verifique PIN Wi-Fi no celular (" + config.host + ")";
+            }
         }
+        vcam_writer.open();
         client.start_streaming(config, video_queue, audio_queue);
 
         decode_running.store(true);
@@ -295,6 +304,10 @@ struct CameraPhoneSourceContext {
                                 of.color_range_max[2] = 0.941176f;
                             }
 
+                            current_width.store(of.width);
+                            current_height.store(of.height);
+                            vcam_writer.write_frame(of.width, of.height, vf.av_pix_fmt, vf.data, vf.linesize, vf.pts_ns);
+
                             if (api.obs_source_output_video2) {
                                 api.obs_source_output_video2(src, &of);
                             } else {
@@ -330,6 +343,7 @@ struct CameraPhoneSourceContext {
             decode_thread.join();
         }
         decoder.shutdown();
+        vcam_writer.close();
         video_queue.clear();
         audio_queue.clear();
     }
@@ -638,12 +652,18 @@ static void source_destroy(void* data) {
     delete ctx;
 }
 
-static uint32_t source_get_width(void*) {
-    return 0;
+static uint32_t source_get_width(void* data) {
+    auto* ctx = static_cast<CameraPhoneSourceContext*>(data);
+    if (!ctx) return 1920;
+    uint32_t w = ctx->current_width.load();
+    return w > 0 ? w : static_cast<uint32_t>(ctx->config.width > 0 ? ctx->config.width : 1920);
 }
 
-static uint32_t source_get_height(void*) {
-    return 0;
+static uint32_t source_get_height(void* data) {
+    auto* ctx = static_cast<CameraPhoneSourceContext*>(data);
+    if (!ctx) return 1080;
+    uint32_t h = ctx->current_height.load();
+    return h > 0 ? h : static_cast<uint32_t>(ctx->config.height > 0 ? ctx->config.height : 1080);
 }
 
 static void source_activate(void* data) {

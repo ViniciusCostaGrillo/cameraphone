@@ -313,14 +313,55 @@ c:\Cameraphone Plugin OBS\
 │   │   └── AdbWinUsbApi.dll
 │   ├── CameraPhone.apk      # Aplicativo Android oficial assinado
 │   ├── CameraPhone.exe      # Instalador Zero-Config e Central de Logs
-│   └── cameraphone.dll      # Plugin nativo 64-bit do OBS Studio
+│   ├── cameraphone.dll      # Plugin nativo 64-bit do OBS Studio
+│   └── cameraphone-vcam.dll # Câmera Virtual DirectShow para NVIDIA Broadcast
 ├── obs-plugin/              # Código C++20 do plugin OBS (Discovery, Decoder, Source)
-├── protocol/                # Especificação de framing do protocolo CamPhoneWire v1
+├── protocol/                # Especificação de framing CamPhoneWire v1 + vcam_shmem
+├── tests/                   # Testes DirectShow e testes de performance de IPC
 ├── tools/                   # Scripts de validação e suíte E2E com Emulador JVM
+├── vcam/                    # Driver DirectShow COM Virtual Camera nativo (NV12 60FPS)
 ├── README.md                # Apresentação do projeto para a comunidade
 ├── KNOWLEDGE.md             # Esta base de conhecimento unificada
 └── install.ps1              # Script de instalação automatizada para PowerShell
 ```
+
+---
+
+## 11. Câmera Virtual DirectShow & NVIDIA Broadcast
+
+### 11.1. Como o NVIDIA Broadcast Descobre Webcams
+O **NVIDIA Broadcast** (localizado em `C:\Program Files\NVIDIA Corporation\NVIDIA Broadcast\NVIDIA Broadcast.exe`) não utiliza a API Media Foundation nem drivers proprietários virtuais para listar câmeras de entrada: ele consulta estritamente a categoria DirectShow `CLSID_VideoInputDeviceCategory` (`{860BB310-5D01-11d0-BD3B-00A0C911CE86}`) via `ICreateDevEnum`.
+
+Para que uma câmera seja aceita pelo NVIDIA Broadcast como dispositivo válido:
+1. Deve ser um filtro COM registrado como `InprocServer32` sob `CLSID_VideoInputDeviceCategory\Instance\{CLSID}`.
+2. Seu pino de saída (`PINDIR_OUTPUT`) deve implementar a interface `IKsPropertySet`.
+3. Ao chamar `IKsPropertySet::Get` com `guidPropSet = AMPROPSETID_Pin` (`{9B00F101-1567-11D1-B3F1-00AA003761C5}`) e `dwPropID = 0` (`AMPROPERTY_PIN_CATEGORY`), o pino **DEVE** retornar obrigatoriamente a GUID `PIN_CATEGORY_CAPTURE` (`{FB6C4281-0353-11D1-905F-0000C0CC16BA}`). Caso contrário, o Broadcast ignora a câmera silenciosamente.
+4. O pino deve expor `IAMStreamConfig` com resoluções e formatos suportados (prioritariamente **NV12** para processamento direto nas GPUs GeForce RTX via TensorRT sem conversões extras de espaço de cor).
+
+### 11.2. Arquitetura de Memória Compartilhada (vcam_shmem.hpp)
+- Buffer mapeado em memória nomeada Win32 (`Local\CameraPhone_VCam_Shmem`, 32 MB).
+- Sinalização ultrarrápida via evento de sincronização Win32 (`Local\CameraPhone_VCam_Event`).
+- Latência medida de transmissão IPC frame-a-frame menor que **0,8 milissegundos**.
+- Gerador procedural de standby NV12 60 FPS com degradê escuro e indicador visual de pulsação suave em caso de celular desconectado, garantindo que o NVIDIA Broadcast nunca congele, falhe ou trave a pipeline dos modelos de IA.
+
+---
+
+## 12. Transformações no Canvas do OBS (Redimensionamento, Recorte e Máscaras)
+
+### 12.1. O Problema das Fontes Assíncronas com 0x0
+No OBS Studio, fontes do tipo `OBS_SOURCE_ASYNC` (como fontes de captura de vídeo e webcams) renderizam quadros assíncronos diretamente na GPU. Entretanto, a manipulação visual do canvas pelo operador de transmissão (como caixas delimitadoras com alças vermelhas, recorte com a tecla `Alt` pressionada e shaders de filtros como *Máscara de Imagem / Mistura*) consulta estritamente as funções de callback `source_get_width` e `source_get_height`.
+
+Quando essas funções retornavam `0`, ocorria:
+- Impossibilidade de selecionar a fonte no canvas do OBS por clique direto.
+- As alças vermelhas de redimensionamento nos vértices não apareciam.
+- O atalho `Alt` + arraste não aplicava corte (crop) nas bordas.
+- O filtro nativo de *Máscara de Imagem / Mistura* não conseguia determinar a textura de destino e abortava a renderização.
+
+### 12.2. A Solução Implementada
+No arquivo `obs-plugin/src/cameraphone-source.cpp`:
+- Implementamos variáveis atômicas `current_width` e `current_height`.
+- Assim que o decodificador FFmpeg de hardware entrega o primeiro quadro de vídeo, ou ao receber os metadados negociados com o smartphone, essas variáveis são atualizadas dinamicamente (`1920x1080`, `3840x2160`, etc.).
+- `source_get_width` e `source_get_height` retornam esses valores, conferindo à fonte CameraPhone comportamento 100% idêntico ao de uma webcam física USB.
 
 ---
 > *Documentação compilada em 2026 como base técnica oficial do projeto CameraPhone.*

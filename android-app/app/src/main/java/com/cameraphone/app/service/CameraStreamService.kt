@@ -28,7 +28,8 @@ class CameraStreamService : Service() {
     }
 
     private val binder = LocalBinder()
-    val securityGate = SecurityGate()
+    lateinit var securityGate: SecurityGate
+        private set
 
     private var server: CamPhoneServer? = null
     private var cameraController: Camera2Controller? = null
@@ -47,6 +48,18 @@ class CameraStreamService : Service() {
     override fun onCreate() {
         super.onCreate()
         AppLogger.info("Service", "CameraStreamService starting on ${Build.MANUFACTURER} ${Build.MODEL} (SDK ${Build.VERSION.SDK_INT})")
+        val prefs = getSharedPreferences("camphone_sec", Context.MODE_PRIVATE)
+        val savedPin = prefs.getString("pin", null)
+        securityGate = SecurityGate(
+            initialPin = savedPin,
+            onPinChanged = { newPin ->
+                prefs.edit().putString("pin", newPin).apply()
+            }
+        )
+        if (savedPin == null) {
+            prefs.edit().putString("pin", securityGate.currentPin).apply()
+        }
+
         createNotificationChannel()
         startForeground(1001, buildNotification("Ready for OBS Studio connection (USB & Wi-Fi)"))
         capabilities = CapabilityProbe.probeDevice(this)

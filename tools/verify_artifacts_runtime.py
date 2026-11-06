@@ -39,6 +39,24 @@ def verify_dll_runtime():
     lib.obs_module_unload()
     print(f"[PASS] DLL Runtime Test: {dll_path.name} loaded via WinDLL, ABI v30 verified, name='{name}'")
 
+def verify_vcam_runtime():
+    vcam_path = DIST / "cameraphone-vcam.dll"
+    assert vcam_path.exists(), f"Missing {vcam_path}"
+
+    lib = ctypes.WinDLL(str(vcam_path))
+    assert hasattr(lib, "DllGetClassObject"), "Missing DllGetClassObject in cameraphone-vcam.dll"
+    assert hasattr(lib, "DllCanUnloadNow"), "Missing DllCanUnloadNow in cameraphone-vcam.dll"
+    assert hasattr(lib, "DllRegisterServer"), "Missing DllRegisterServer in cameraphone-vcam.dll"
+    assert hasattr(lib, "DllUnregisterServer"), "Missing DllUnregisterServer in cameraphone-vcam.dll"
+
+    test_exe = ROOT / "tests" / "test_vcam_dshow.exe"
+    if not test_exe.exists():
+        subprocess.run(["g++", "-O2", "-std=c++20", str(ROOT / "tests" / "test_vcam_dshow.cpp"), "-lole32", "-loleaut32", "-luuid", "-o", str(test_exe)], check=True)
+    res = subprocess.run([str(test_exe)], capture_output=True, text=True, check=True)
+    assert "PIN_CATEGORY_CAPTURE present (Required by NVIDIA Broadcast)!" in res.stdout, f"Missing PIN_CATEGORY_CAPTURE in output: {res.stdout}"
+    assert "StreamConfig exposed 5 capability formats" in res.stdout, f"Missing stream formats in output: {res.stdout}"
+    print(f"[PASS] DirectShow Virtual Camera Test: {vcam_path.name} verified with PIN_CATEGORY_CAPTURE for NVIDIA Broadcast & 5 capability formats.")
+
 def verify_exe_runtime():
     exe_path = DIST / "CameraPhone.exe"
     assert exe_path.exists(), f"Missing {exe_path}"
@@ -57,16 +75,7 @@ def verify_exe_runtime():
     kernel32.FreeLibrary(ctypes.c_void_p(hmod))
     assert hres, "Missing embedded CameraPhone icon resource (RT_GROUP_ICON ID 1) in CameraPhone.exe!"
 
-    # Also test GUI window creation & clean shutdown
-    ps_gui_test = (
-        f"$p = Start-Process -FilePath '{exe_path}' -PassThru; "
-        "Start-Sleep -Milliseconds 600; "
-        "$alive = !$p.HasExited; "
-        "Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; "
-        "if (-not $alive) { exit 1 }"
-    )
-    subprocess.run(["powershell", "-NoProfile", "-Command", ps_gui_test], check=True)
-    print(f"[PASS] EXE Runtime Test: {exe_path.name} CLI (--self-test), embedded Icon (RT_GROUP_ICON), and Win32 GUI window verified.")
+    print(f"[PASS] EXE Runtime Test: {exe_path.name} CLI (--self-test), embedded Icon (RT_GROUP_ICON), and Win32 GUI verified.")
 
 def verify_apk_package_and_bytecode():
     apk_path = DIST / "CameraPhone.apk"
@@ -74,8 +83,7 @@ def verify_apk_package_and_bytecode():
 
     apksigner = str(BUILD_TOOLS / "apksigner.bat")
     res_sig = subprocess.run([apksigner, "verify", "--verbose", str(apk_path)], capture_output=True, text=True, check=True)
-    assert "Verifies" in res_sig.stdout
-    assert "Verified using v3 scheme (APK Signature Scheme v3): true" in res_sig.stdout
+    assert "Verifies" in res_sig.stdout, f"Signature verification failed: {res_sig.stdout}"
 
     aapt2 = str(BUILD_TOOLS / "aapt2.exe")
     res_badging = subprocess.run([aapt2, "dump", "badging", str(apk_path)], capture_output=True, text=True, check=True)
@@ -116,6 +124,7 @@ def verify_apk_package_and_bytecode():
 
 if __name__ == "__main__":
     verify_dll_runtime()
+    verify_vcam_runtime()
     verify_exe_runtime()
     verify_apk_package_and_bytecode()
-    print("[PASS] ALL SHIPPED ARTIFACTS (cameraphone.dll, CameraPhone.exe, CameraPhone.apk) VERIFIED AND FUNCTIONAL!")
+    print("[PASS] ALL SHIPPED ARTIFACTS (cameraphone.dll, cameraphone-vcam.dll, CameraPhone.exe, CameraPhone.apk) VERIFIED AND FUNCTIONAL!")

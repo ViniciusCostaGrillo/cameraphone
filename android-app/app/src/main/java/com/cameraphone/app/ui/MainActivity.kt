@@ -60,6 +60,7 @@ class MainActivity : Activity() {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             val svc = (binder as? CameraStreamService.LocalBinder)?.getService() ?: return
             streamService = svc
+            svc.securityGate.resetLockouts()
             pinValueText.text = svc.securityGate.currentPin.chunked(3).joinToString(" ")
             usbOnlySwitch.isChecked = svc.usbOnlyMode
             updateIpBanner(svc.usbOnlyMode)
@@ -74,6 +75,10 @@ class MainActivity : Activity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        streamService?.securityGate?.resetLockouts()
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

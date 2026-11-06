@@ -44,13 +44,16 @@ Todos os binários compilados, assinados e com o ícone oficial **CameraPhone** 
 | :--- | :--- |
 | [`CameraPhone.exe`](CameraPhone.exe) / [`dist/CameraPhone.exe`](dist/CameraPhone.exe) | **Instalador Zero-Config & Central de Logs** para Windows (com ícone oficial embutido) |
 | [`CameraPhone.apk`](CameraPhone.apk) / [`dist/CameraPhone.apk`](dist/CameraPhone.apk) | **Aplicativo Android Nativo** (`com.cameraphone.app`, assinado v1/v2/v3 com ícone oficial) |
-| [`dist/cameraphone.dll`](dist/cameraphone.dll) | **Plugin Nativo 64-bit** (`CameraPhone 4K Pro`) |
+| [`dist/cameraphone.dll`](dist/cameraphone.dll) | **Plugin Nativo 64-bit OBS** (`CameraPhone 4K Pro`) |
+| [`dist/cameraphone-vcam.dll`](dist/cameraphone-vcam.dll) | **Câmera Virtual DirectShow Nativa** para **NVIDIA Broadcast** (`CameraPhone Virtual Camera`) |
 
 ### Passo a Passo Zero-Config:
-1. Execute [`CameraPhone.exe`](CameraPhone.exe) no PC: ao abrir, ele instala automaticamente o plugin [`cameraphone.dll`](dist/cameraphone.dll), o [`CameraPhone.apk`](dist/CameraPhone.apk) e o motor ADB embutido.
-2. Adicione a fonte de câmera **📷 `CameraPhone 4K Pro (Cabo USB / Wi-Fi IP)`**:
+1. Execute [`CameraPhone.exe`](CameraPhone.exe) no PC: ao abrir, ele instala automaticamente o plugin [`cameraphone.dll`](dist/cameraphone.dll), a câmera virtual [`cameraphone-vcam.dll`](dist/cameraphone-vcam.dll), o [`CameraPhone.apk`](dist/CameraPhone.apk) e o motor ADB embutido.
+2. Adicione a fonte de câmera **📷 `CameraPhone 4K Pro (Cabo USB / Wi-Fi IP)`** no OBS Studio:
    - **Modo Cabo USB (`Zero-Config Automático`):** Clique no botão **`Instalar APK no Celular (Somente via Cabo USB)`** dentro da própria janela de propriedades da câmera — ele instala o `CameraPhone.apk`, concede as permissões de câmera/microfone, abre o app no celular e inicia o vídeo sem precisar digitar IP nem senha!
-   - **Modo Wi-Fi (`Conectar por IP na Rede`):** Digite o IP exibido no topo do app Android e o PIN de 6 dígitos.
+   - **Modo Wi-Fi (`Conectar por IP na Rede`):** Digite o IP exibido no topo do app Android e o PIN de 6 dígitos. O PIN fica gravado de forma persistente e a proteção de taxa evita bloqueios indevidos na rede local.
+   - **Redimensionamento, Corte e Filtros no OBS:** A fonte expõe as dimensões reais dinamicamente (`1920x1080` / `3840x2160`). Você pode redimensionar pelas alças vermelhas, cortar bordas segurando a tecla `Alt` e aplicar filtros nativos como *Máscara de Imagem / Mistura*, *Chroma Key* e *Correção de Cor*.
+   - **Compatibilidade com NVIDIA Broadcast:** Clique em **`5. NVIDIA Broadcast`** no instalador `CameraPhone.exe` (ou use a câmera virtual DirectShow registrada). Abra o **NVIDIA Broadcast**, escolha **`CameraPhone Virtual Camera`** e aproveite todos os filtros de inteligência artificial: Remoção/Desfoque de Fundo, Enquadramento Automático, Contato Visual e Redução de Ruído de Vídeo!
    - **Central de Logs Integrada (`PC + APK`):** Tanto o aplicativo Android quanto o `CameraPhone.exe` e a janela de propriedades da câmera possuem visualizador de logs em tempo real (`%APPDATA%\CameraPhone\cameraphone.log` + `/v1/logs` do celular) para diagnóstico instantâneo.
 
 ---

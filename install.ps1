@@ -6,6 +6,7 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 $DllSrc = if (Test-Path (Join-Path $Root "dist\cameraphone.dll")) { Join-Path $Root "dist\cameraphone.dll" } else { Join-Path $Root "cameraphone.dll" }
+$VCamSrc = if (Test-Path (Join-Path $Root "dist\cameraphone-vcam.dll")) { Join-Path $Root "dist\cameraphone-vcam.dll" } else { Join-Path $Root "cameraphone-vcam.dll" }
 $PluginsDir = "C:\Program Files\obs-studio\obs-plugins\64bit"
 $DataDir = "C:\Program Files\obs-studio\data\obs-plugins\cameraphone"
 $ApkSrc = if (Test-Path (Join-Path $Root "dist\CameraPhone.apk")) { Join-Path $Root "dist\CameraPhone.apk" } else { Join-Path $Root "CameraPhone.apk" }
@@ -23,6 +24,11 @@ if (Test-Path $PluginsDir) {
     try {
         Remove-Item (Join-Path $PluginsDir "cameraphone-obs.dll") -Force -ErrorAction SilentlyContinue
         Copy-Item $DllSrc (Join-Path $PluginsDir "cameraphone.dll") -Force
+        if (Test-Path $VCamSrc) {
+            Copy-Item $VCamSrc (Join-Path $PluginsDir "cameraphone-vcam.dll") -Force
+            regsvr32.exe /s (Join-Path $PluginsDir "cameraphone-vcam.dll")
+            Write-Host "[OK] Camera Virtual DirectShow instalada para NVIDIA Broadcast!" -ForegroundColor Green
+        }
         New-Item -ItemType Directory -Force -Path (Join-Path $DataDir "adb") | Out-Null
         if (Test-Path $ApkSrc) { Copy-Item $ApkSrc (Join-Path $DataDir "CameraPhone.apk") -Force }
         if (Test-Path $AdbExe) {
