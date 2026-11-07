@@ -207,16 +207,19 @@ private:
         VCamSharedMemoryWriter vcam_writer;
 
         while (m_running.load()) {
+            // Yield cleanly while OBS Studio's native CameraPhone source is actively streaming
+            if (OBSStreamGuard::is_obs_streaming()) {
+                m_streaming.store(false);
+                m_status = "OBS Studio ativo (Camera Virtual alimentada pelo OBS)";
+                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+                continue;
+            }
+
             std::string usb_hint;
             auto devs = DiscoveryManager::list_usb_devices(4748, 4748, &usb_hint);
             if (devs.empty()) {
                 m_streaming.store(false);
                 m_status = "Aguardando celular no cabo USB...";
-                std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-                continue;
-            }
-
-            if (!DiscoveryManager::ensure_usb_tunnel_ready(4748, 4748, false)) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(2000));
                 continue;
             }
@@ -229,6 +232,10 @@ private:
                 continue;
             }
 
+            if (OBSStreamGuard::is_obs_streaming()) {
+                continue;
+            }
+
             StreamConfig cfg{};
             cfg.host = "127.0.0.1";
             cfg.port = 4748;
@@ -238,34 +245,50 @@ private:
             cfg.fps = 60;
             cfg.codec = caps.supports_hevc ? "hevc" : "h264";
 
+            video_queue.clear();
+            audio_queue.clear();
             decoder.initialize_video(cfg.codec);
             vcam_writer.open();
             m_client.start_streaming(cfg, video_queue, audio_queue);
-            m_streaming.store(true);
-            m_status = "Transmitindo USB -> CameraPhone Virtual Camera (" + caps.device_model + ")";
-            DiagnosticLogger::info("UsbFeeder", m_status);
 
-            while (m_running.load() && m_client.is_connected()) {
-                auto pkt = video_queue.pop();
-                if (pkt.has_value()) {
-                    decoder.decode_video_packet(*pkt, [&](const DecodedVideoFrame& vf) {
-                        vcam_writer.write_frame(
-                            static_cast<uint32_t>(vf.width),
-                            static_cast<uint32_t>(vf.height),
-                            vf.av_pix_fmt,
-                            vf.data,
-                            vf.linesize,
-                            vf.pts_ns
-                        );
-                    });
-                } else {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            // Wait up to 4000ms for the async worker thread to complete TCP + HTTP 200 OK handshake
+            for (int wait_step = 0;
+                 wait_step < 80 && m_running.load() && m_client.is_running() &&
+                 !OBSStreamGuard::is_obs_streaming() && !m_client.is_connected();
+                 ++wait_step) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+
+            if (m_running.load() && m_client.is_connected() && !OBSStreamGuard::is_obs_streaming()) {
+                m_streaming.store(true);
+                m_status = "Transmitindo USB -> CameraPhone Virtual Camera (" + caps.device_model + ")";
+                DiagnosticLogger::info("UsbFeeder", m_status);
+
+                while (m_running.load() && m_client.is_connected() && !OBSStreamGuard::is_obs_streaming()) {
+                    auto pkt = video_queue.pop();
+                    if (pkt.has_value()) {
+                        decoder.decode_video_packet(*pkt, [&](const DecodedVideoFrame& vf) {
+                            vcam_writer.write_frame(
+                                static_cast<uint32_t>(vf.width),
+                                static_cast<uint32_t>(vf.height),
+                                vf.av_pix_fmt,
+                                vf.data,
+                                vf.linesize,
+                                vf.pts_ns
+                            );
+                        });
+                    } else {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                    }
                 }
             }
 
             m_client.stop_streaming();
+            decoder.shutdown();
             m_streaming.store(false);
-            std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+            for (int i = 0; i < 15 && m_running.load(); ++i) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
         }
     }
 
@@ -499,6 +522,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
     case WM_COMMAND: {
         const int id = LOWORD(wparam);
         if (id == ID_TRAY_OPEN) {
+            ShowWindow(hwnd, SW_SHOW);
             ShowWindow(hwnd, SW_RESTORE);
             SetForegroundWindow(hwnd);
             return 0;
@@ -603,6 +627,20 @@ int main(int argc, char** argv) {
         }
     }
 
+    // Enforce Single-Instance for the Companion GUI / UsbBroadcastFeeder daemon
+    HANDLE instance_mutex = CreateMutexA(nullptr, FALSE, "Local\\CameraPhone_Companion_Mutex");
+    if (instance_mutex && GetLastError() == ERROR_ALREADY_EXISTS) {
+        if (!run_background) {
+            HWND existing = FindWindowA("CameraPhoneCompanionWnd", nullptr);
+            if (existing) {
+                PostMessageA(existing, WM_COMMAND, ID_TRAY_OPEN, 0);
+                SetForegroundWindow(existing);
+            }
+        }
+        CloseHandle(instance_mutex);
+        return 0;
+    }
+
     WNDCLASSA wc{};
     wc.lpfnWndProc   = WndProc;
     wc.hInstance     = GetModuleHandleA(nullptr);
@@ -620,7 +658,10 @@ int main(int argc, char** argv) {
         CW_USEDEFAULT, CW_USEDEFAULT, 765, 525,
         nullptr, nullptr, wc.hInstance, nullptr
     );
-    if (!hwnd) return 1;
+    if (!hwnd) {
+        if (instance_mutex) CloseHandle(instance_mutex);
+        return 1;
+    }
 
     if (!run_background) {
         ShowWindow(hwnd, SW_SHOW);
@@ -635,5 +676,6 @@ int main(int argc, char** argv) {
 
     if (g_bg_brush) DeleteObject(g_bg_brush);
     if (g_log_brush) DeleteObject(g_log_brush);
+    if (instance_mutex) CloseHandle(instance_mutex);
     return 0;
 }

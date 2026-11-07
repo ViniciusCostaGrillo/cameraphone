@@ -202,21 +202,22 @@ struct ObsApi {
 };
 
 struct CameraPhoneSourceContext {
-    obs_source_t*        source = nullptr;
-    std::string          conn_mode = "usb"; // "usb" or "wifi"
-    std::string          status_message = "Pronto. Selecione Cabo USB (Zero-Config) ou IP Wi-Fi.";
-    StreamConfig         config{};
-    DeviceCapabilities   capabilities{};
-    BoundedFrameQueue    video_queue{60};
-    BoundedFrameQueue    audio_queue{60};
-    StreamClient         client{};
-    MediaDecoder         decoder{};
-    std::atomic<bool>     decode_running{false};
-    std::thread           decode_thread{};
-    std::recursive_mutex  pipeline_mutex{};
-    std::atomic<uint32_t> current_width{1920};
-    std::atomic<uint32_t> current_height{1080};
+    obs_source_t*          source = nullptr;
+    std::string            conn_mode = "usb"; // "usb" or "wifi"
+    std::string            status_message = "Pronto. Selecione Cabo USB (Zero-Config) ou IP Wi-Fi.";
+    StreamConfig           config{};
+    DeviceCapabilities     capabilities{};
+    BoundedFrameQueue      video_queue{60};
+    BoundedFrameQueue      audio_queue{60};
+    StreamClient           client{};
+    MediaDecoder           decoder{};
+    std::atomic<bool>      decode_running{false};
+    std::thread            decode_thread{};
+    std::recursive_mutex   pipeline_mutex{};
+    std::atomic<uint32_t>  current_width{1920};
+    std::atomic<uint32_t>  current_height{1080};
     VCamSharedMemoryWriter vcam_writer{};
+    OBSStreamGuard         obs_guard{};
 
     void start_pipeline() {
         std::lock_guard<std::recursive_mutex> lock(pipeline_mutex);
@@ -240,6 +241,7 @@ struct CameraPhoneSourceContext {
 
         DiagnosticLogger::info("OBS-Source", "Starting pipeline: mode=" + conn_mode + " host=" + config.host + ":" + std::to_string(config.port) + " res=" + std::to_string(config.width) + "x" + std::to_string(config.height) + "@" + std::to_string(config.fps) + " codec=" + config.codec);
 
+        obs_guard.acquire();
         decoder.initialize_video(config.codec);
         decoder.initialize_audio();
         if (client.fetch_capabilities(config.host, config.port, config.pin, capabilities)) {
@@ -344,6 +346,7 @@ struct CameraPhoneSourceContext {
         }
         decoder.shutdown();
         vcam_writer.close();
+        obs_guard.release();
         video_queue.clear();
         audio_queue.clear();
     }

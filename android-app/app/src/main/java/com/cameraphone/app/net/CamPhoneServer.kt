@@ -58,15 +58,18 @@ class CamPhoneServer(
     fun sendMediaPacket(header16: ByteArray, payload: ByteArray) {
         val out = activeStreamOutput ?: return
         synchronized(writeLock) {
+            if (activeStreamOutput !== out) return
             try {
                 out.write(header16)
                 out.write(payload)
                 out.flush()
             } catch (e: Exception) {
                 AppLogger.warn("Server", "Stream client socket write closed (${e.message})")
-                activeStreamOutput = null
-                streamingActive.set(false)
-                onStopStream()
+                if (activeStreamOutput === out) {
+                    activeStreamOutput = null
+                    streamingActive.set(false)
+                    onStopStream()
+                }
             }
         }
     }
@@ -81,10 +84,12 @@ class CamPhoneServer(
             inetAddr?.hostAddress ?: "unknown"
         }
         var ownsActiveStream = false
+        var clientOut: OutputStream? = null
 
         try {
             val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
             val out = socket.getOutputStream()
+            clientOut = out
 
             val requestLine = reader.readLine() ?: return
             val parts = requestLine.split(" ")
@@ -141,13 +146,19 @@ class CamPhoneServer(
                     writeHttpResponse(out, 200, "OK", "{\"logs\":${AppLogger.dumpJsonArray()}}")
                 }
                 method == "GET" && path == "/v1/stream" -> {
-                    if (!streamingActive.compareAndSet(false, true)) {
-                        AppLogger.warn("Server", "Second stream request from $remoteIp while active -> replacing previous stream")
-                        try { activeStreamOutput?.close() } catch (_: Exception) {}
-                        onStopStream()
-                        streamingActive.set(true)
+                    synchronized(writeLock) {
+                        if (!streamingActive.compareAndSet(false, true)) {
+                            AppLogger.warn("Server", "Second stream request from $remoteIp while active -> replacing previous stream")
+                            val prev = activeStreamOutput
+                            activeStreamOutput = out
+                            try { prev?.close() } catch (_: Exception) {}
+                            onStopStream()
+                            streamingActive.set(true)
+                        } else {
+                            activeStreamOutput = out
+                        }
+                        ownsActiveStream = true
                     }
-                    ownsActiveStream = true
                     val params = parseQuery(query)
                     val lensId = params["lens"] ?: "0"
                     val res = (params["res"] ?: "3840x2160").split("x")
@@ -161,7 +172,6 @@ class CamPhoneServer(
                     out.write("HTTP/1.1 200 OK\r\nContent-Type: application/x-camphone-stream\r\nConnection: keep-alive\r\n\r\n".toByteArray())
                     out.flush()
                     socket.soTimeout = 0 // Streaming socket stays open
-                    activeStreamOutput = out
                     onStartStream(lensId, w, h, fps, codec, hdr)
 
                     // Block until client disconnects
@@ -201,10 +211,18 @@ class CamPhoneServer(
                 AppLogger.warn("Server", "Active stream connection ended: ${e.message}")
             }
         } finally {
-            if (ownsActiveStream && activeStreamOutput != null) {
-                activeStreamOutput = null
-                streamingActive.set(false)
-                onStopStream()
+            if (ownsActiveStream) {
+                var shouldStop = false
+                synchronized(writeLock) {
+                    if (clientOut != null && activeStreamOutput === clientOut) {
+                        activeStreamOutput = null
+                        streamingActive.set(false)
+                        shouldStop = true
+                    }
+                }
+                if (shouldStop) {
+                    onStopStream()
+                }
             }
             try { socket.close() } catch (_: Exception) {}
         }

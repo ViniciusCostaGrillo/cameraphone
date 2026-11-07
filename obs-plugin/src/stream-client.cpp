@@ -268,6 +268,7 @@ void StreamClient::start_streaming(const StreamConfig& cfg, BoundedFrameQueue& v
             socket_t s = connect_with_timeout(cfg.host, cfg.port, 2500);
             if (s == kInvalidSocket) {
                 connected_.store(false);
+                if (!running_.load()) break;
                 if (cfg.host == "127.0.0.1" && cfg.pin == "usb-zero-config") {
                     DiscoveryManager::ensure_usb_tunnel_ready(cfg.port, cfg.port, true);
                 }
@@ -301,6 +302,12 @@ void StreamClient::start_streaming(const StreamConfig& cfg, BoundedFrameQueue& v
             while (running_.load() && http_hdr.find("\r\n\r\n") == std::string::npos && http_hdr.size() < 4096) {
                 if (recv(s, &ch, 1, 0) <= 0) break;
                 http_hdr.push_back(ch);
+            }
+            if (!running_.load()) {
+                close_sock(s);
+                active_sock_.store(static_cast<uintptr_t>(kInvalidSocket));
+                connected_.store(false);
+                break;
             }
             if (http_hdr.find("200 OK") == std::string::npos) {
                 if (http_hdr.find("401 Unauthorized") != std::string::npos || http_hdr.find("invalid_pin") != std::string::npos) {
@@ -342,7 +349,9 @@ void StreamClient::start_streaming(const StreamConfig& cfg, BoundedFrameQueue& v
             std::array<uint8_t, kHeaderSize> wire_hdr{};
             while (running_.load()) {
                 if (!recv_exact(s, wire_hdr.data(), kHeaderSize)) {
-                    DiagnosticLogger::warn("StreamClient", "Stream socket closed or timed out waiting for packet header from " + cfg.host);
+                    if (running_.load()) {
+                        DiagnosticLogger::warn("StreamClient", "Stream socket closed or timed out waiting for packet header from " + cfg.host);
+                    }
                     break;
                 }
                 PacketHeader pkt_hdr{};
@@ -353,7 +362,9 @@ void StreamClient::start_streaming(const StreamConfig& cfg, BoundedFrameQueue& v
                 }
                 std::vector<uint8_t> payload(pkt_hdr.payload_size);
                 if (pkt_hdr.payload_size > 0 && !recv_exact(s, payload.data(), pkt_hdr.payload_size)) {
-                    DiagnosticLogger::warn("StreamClient", "Stream socket closed while reading payload (" + std::to_string(pkt_hdr.payload_size) + " bytes)");
+                    if (running_.load()) {
+                        DiagnosticLogger::warn("StreamClient", "Stream socket closed while reading payload (" + std::to_string(pkt_hdr.payload_size) + " bytes)");
+                    }
                     break;
                 }
                 ++rx_packets;

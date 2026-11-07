@@ -61,6 +61,7 @@ public:
     void start_streaming(const StreamConfig& cfg, BoundedFrameQueue& video_queue, BoundedFrameQueue& audio_queue);
     void stop_streaming();
     bool is_connected() const noexcept { return connected_.load(); }
+    bool is_running() const noexcept { return running_.load(); }
 
 private:
     std::atomic<bool>      running_{false};

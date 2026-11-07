@@ -135,4 +135,58 @@ class SecurityGateTest {
             server.stop()
         }
     }
+
+    @Test
+    fun `replacement stream does not get stopped when evicted stream closes`() {
+        val gate = SecurityGate()
+        var activeStreams = 0
+        val server = CamPhoneServer(
+            port = 0,
+            usbOnlyLoopback = true,
+            securityGate = gate,
+            capabilitiesJsonProvider = { "{}" },
+            onStartStream = { _, _, _, _, _, _ -> activeStreams++ },
+            onStopStream = { activeStreams-- },
+            onControlPatch = {},
+            onTallyUpdate = {}
+        )
+        server.start()
+        val port = server.boundPort
+        try {
+            val s1 = Socket("127.0.0.1", port)
+            s1.getOutputStream().write("GET /v1/stream?lens=0&res=1920x1080&fps=60&codec=hevc&hdr=0 HTTP/1.1\r\nAuthorization: Bearer usb-zero-config\r\n\r\n".toByteArray())
+            val r1 = BufferedReader(InputStreamReader(s1.getInputStream()))
+            assertTrue(r1.readLine().contains("200"))
+            while (r1.readLine().isNotEmpty()) {}
+            Thread.sleep(50)
+            assertEquals(1, activeStreams)
+
+            // Connect s2 replacing s1
+            val s2 = Socket("127.0.0.1", port)
+            s2.getOutputStream().write("GET /v1/stream?lens=0&res=1920x1080&fps=60&codec=hevc&hdr=0 HTTP/1.1\r\nAuthorization: Bearer usb-zero-config\r\n\r\n".toByteArray())
+            val r2 = BufferedReader(InputStreamReader(s2.getInputStream()))
+            assertTrue(r2.readLine().contains("200"))
+            while (r2.readLine().isNotEmpty()) {}
+
+            // Wait for s1 handler thread's finally block to finish after s1 closes
+            s1.close()
+            Thread.sleep(100)
+
+            // s2 must still own the active stream (activeStreams == 1) and receive media packets!
+            assertEquals("Evicted stream s1 must not stop s2's active stream", 1, activeStreams)
+            server.sendMediaPacket(ByteArray(16) { 1 }, ByteArray(4) { 2 })
+            val received = ByteArray(20)
+            var total = 0
+            s2.soTimeout = 1000
+            while (total < 20) {
+                val n = s2.getInputStream().read(received, total, 20 - total)
+                if (n <= 0) break
+                total += n
+            }
+            assertEquals(20, total)
+            s2.close()
+        } finally {
+            server.stop()
+        }
+    }
 }

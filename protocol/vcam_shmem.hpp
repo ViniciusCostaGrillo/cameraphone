@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -10,6 +11,9 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#ifdef DeviceCapabilities
+#undef DeviceCapabilities
+#endif
 #endif
 
 namespace camphone {
@@ -17,8 +21,79 @@ namespace camphone {
 constexpr uint32_t kVCamMagic = 0x43505643; // "CPVC"
 constexpr uint32_t kVCamVersion = 1;
 constexpr size_t   kVCamSharedMemSize = 32 * 1024 * 1024; // 32 MB (supports up to 4K60 NV12/YUY2)
-constexpr const wchar_t* kVCamSharedMemName = L"Local\\CameraPhone_VCam_Shmem";
-constexpr const wchar_t* kVCamEventName     = L"Local\\CameraPhone_VCam_Event";
+constexpr const wchar_t* kVCamSharedMemName    = L"Local\\CameraPhone_VCam_Shmem";
+constexpr const wchar_t* kVCamEventName        = L"Local\\CameraPhone_VCam_Event";
+constexpr const wchar_t* kOBSStreamingMutexName = L"Local\\CameraPhone_OBS_Streaming_Mutex";
+
+class OBSStreamGuard {
+public:
+    OBSStreamGuard() = default;
+    ~OBSStreamGuard() { release(); }
+
+    OBSStreamGuard(const OBSStreamGuard&) = delete;
+    OBSStreamGuard& operator=(const OBSStreamGuard&) = delete;
+
+    void acquire() noexcept {
+#ifdef _WIN32
+        if (owned_) return;
+        if (!mutex_handle_) {
+            mutex_handle_ = CreateMutexW(nullptr, FALSE, kOBSStreamingMutexName);
+        }
+        if (mutex_handle_) {
+            DWORD res = WaitForSingleObject(mutex_handle_, 0);
+            if (res == WAIT_OBJECT_0 || res == WAIT_ABANDONED) {
+                owned_ = true;
+                active_in_proc_count().fetch_add(1);
+            }
+        }
+#endif
+    }
+
+    void release() noexcept {
+#ifdef _WIN32
+        if (mutex_handle_) {
+            if (owned_) {
+                active_in_proc_count().fetch_sub(1);
+                ReleaseMutex(mutex_handle_);
+                owned_ = false;
+            }
+            CloseHandle(mutex_handle_);
+            mutex_handle_ = nullptr;
+        }
+#endif
+    }
+
+    static bool is_obs_streaming() noexcept {
+#ifdef _WIN32
+        if (active_in_proc_count().load() > 0) {
+            return true;
+        }
+        HANDLE h = OpenMutexW(SYNCHRONIZE, FALSE, kOBSStreamingMutexName);
+        if (!h) return false;
+        DWORD res = WaitForSingleObject(h, 0);
+        if (res == WAIT_OBJECT_0 || res == WAIT_ABANDONED) {
+            ReleaseMutex(h);
+            CloseHandle(h);
+            return false;
+        }
+        CloseHandle(h);
+        return res == WAIT_TIMEOUT;
+#else
+        return false;
+#endif
+    }
+
+private:
+    static std::atomic<int>& active_in_proc_count() noexcept {
+        static std::atomic<int> count{0};
+        return count;
+    }
+
+#ifdef _WIN32
+    HANDLE mutex_handle_ = nullptr;
+    bool   owned_ = false;
+#endif
+};
 
 #pragma pack(push, 1)
 struct VCamSharedHeader {
