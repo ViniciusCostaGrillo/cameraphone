@@ -70,6 +70,27 @@ def build_dll():
     subprocess.run(cmd, check=True)
     print(f"[Plugin Built] {out_dll} ({out_dll.stat().st_size} bytes)")
 
+    # Build DirectShow Virtual Camera DLL (with .def for COM exports)
+    vcam_dir = ROOT.parent / "vcam"
+    dist_dir = ROOT.parent / "dist"
+    dist_dir.mkdir(parents=True, exist_ok=True)
+    out_vcam = dist_dir / "cameraphone-vcam.dll"
+    vcam_cmd = [
+        cxx, "-std=c++20", "-O2", "-Wall", "-Wextra", "-shared", "-static",
+        "-I", str(ROOT.parent / "protocol"),
+        str(vcam_dir / "cameraphone-vcam.cpp"),
+        str(vcam_dir / "cameraphone-vcam.def"),
+        "-lole32", "-loleaut32", "-luuid",
+        "-o", str(out_vcam)
+    ]
+    print("[Build VCam DLL]", " ".join(vcam_cmd))
+    subprocess.run(vcam_cmd, check=True)
+    try:
+        shutil.copy2(out_vcam, ROOT.parent / "cameraphone-vcam.dll")
+    except PermissionError:
+        pass
+    print(f"[VCam Built] {out_vcam} ({out_vcam.stat().st_size} bytes)")
+
 def build_desktop_exe():
     dist_dir = ROOT.parent / "dist"
     dist_dir.mkdir(parents=True, exist_ok=True)

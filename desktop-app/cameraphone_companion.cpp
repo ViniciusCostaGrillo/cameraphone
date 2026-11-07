@@ -228,7 +228,7 @@ private:
             if (!m_client.fetch_capabilities("127.0.0.1", 4748, "usb-zero-config", caps)) {
                 m_streaming.store(false);
                 m_status = "Cabo USB conectado. Abra o app CameraPhone no celular.";
-                std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+                std::this_thread::sleep_for(std::chrono::milliseconds(600));
                 continue;
             }
 
@@ -286,7 +286,7 @@ private:
             m_client.stop_streaming();
             decoder.shutdown();
             m_streaming.store(false);
-            for (int i = 0; i < 15 && m_running.load(); ++i) {
+            for (int i = 0; i < 5 && m_running.load(); ++i) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
         }
@@ -588,6 +588,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
             return 0;
         }
         break;
+    }
+    case WM_CLOSE: {
+        // Hide to System Tray so USB -> NVIDIA Broadcast background daemon continues uninterrupted
+        ShowWindow(hwnd, SW_HIDE);
+        return 0;
     }
     case WM_DESTROY:
         g_feeder.stop();

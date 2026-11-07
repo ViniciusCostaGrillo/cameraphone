@@ -43,6 +43,20 @@ class CameraStreamService : Service() {
     var usbOnlyMode: Boolean = false
         private set
 
+    private data class StreamParams(
+        val lensId: String,
+        val w: Int,
+        val h: Int,
+        val fps: Int,
+        val codec: String,
+        val hdr: Boolean
+    )
+
+    @Volatile
+    private var lastStreamParams: StreamParams? = null
+    @Volatile
+    private var streamRequested: Boolean = false
+
     var onUiStateChange: ((tally: String, streaming: Boolean, activeInfo: String) -> Unit)? = null
 
     override fun onCreate() {
@@ -116,7 +130,9 @@ class CameraStreamService : Service() {
     }
 
     private fun startHardwarePipeline(lensId: String, w: Int, h: Int, fps: Int, codec: String, hdr: Boolean) {
-        stopHardwarePipeline()
+        lastStreamParams = StreamParams(lensId, w, h, fps, codec, hdr)
+        streamRequested = true
+        stopHardwarePipelineInternal()
         val cam = cameraController ?: return
         try {
             val (actualSize, actualFpsRange) = cam.pickSupportedResolutionAndFps(lensId, w, h, fps)
@@ -150,12 +166,25 @@ class CameraStreamService : Service() {
         }
     }
 
-    private fun stopHardwarePipeline() {
+    fun onPermissionsGranted() {
+        val params = lastStreamParams
+        if (streamRequested && params != null) {
+            AppLogger.info("Service", "Permissions granted while stream requested — restarting camera session")
+            startHardwarePipeline(params.lensId, params.w, params.h, params.fps, params.codec, params.hdr)
+        }
+    }
+
+    private fun stopHardwarePipelineInternal() {
         audioEncoder?.stop()
         audioEncoder = null
         cameraController?.stopSession()
         videoEncoder?.stop()
         videoEncoder = null
+    }
+
+    private fun stopHardwarePipeline() {
+        streamRequested = false
+        stopHardwarePipelineInternal()
         onUiStateChange?.invoke("idle", false, "Standby")
     }
 

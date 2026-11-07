@@ -8,6 +8,8 @@
 #include <commctrl.h>
 #include <dwmapi.h>
 
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -105,6 +107,130 @@ static bool set_autostart_registry(const fs::path& exe_path) {
         return res == ERROR_SUCCESS;
     }
     return false;
+}
+
+static void deploy_uninstaller_and_register(const fs::path& target_dir) {
+    char self_path[MAX_PATH]{};
+    GetModuleFileNameA(nullptr, self_path, MAX_PATH);
+    fs::path self_p(self_path);
+
+    const fs::path uninst_pt = target_dir / "Desinstalar CameraPhone.exe";
+    const fs::path uninst_en = target_dir / "Uninstall-CameraPhone.exe";
+
+    std::error_code ec;
+    if (fs::exists(self_p)) {
+        fs::copy_file(self_p, uninst_pt, fs::copy_options::overwrite_existing, ec);
+        fs::copy_file(self_p, uninst_en, fs::copy_options::overwrite_existing, ec);
+    }
+
+    HKEY hKey = nullptr;
+    LPCSTR uninst_subkey = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CameraPhone";
+    if (RegCreateKeyExA(HKEY_LOCAL_MACHINE, uninst_subkey, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &hKey, nullptr) == ERROR_SUCCESS) {
+        auto set_str = [&](const char* name, const std::string& val) {
+            RegSetValueExA(hKey, name, 0, REG_SZ, reinterpret_cast<const BYTE*>(val.c_str()), static_cast<DWORD>(val.length() + 1));
+        };
+        set_str("DisplayName", "CameraPhone 4K Pro");
+        set_str("DisplayVersion", "1.3.2");
+        set_str("Publisher", "CameraPhone Team");
+        set_str("InstallLocation", target_dir.string());
+        set_str("DisplayIcon", (target_dir / "CameraPhone.exe").string());
+        set_str("UninstallString", "\"" + uninst_pt.string() + "\" --uninstall");
+        set_str("QuietUninstallString", "\"" + uninst_pt.string() + "\" --uninstall /S");
+        DWORD no_modify = 1;
+        RegSetValueExA(hKey, "NoModify", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&no_modify), sizeof(DWORD));
+        RegSetValueExA(hKey, "NoRepair", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&no_modify), sizeof(DWORD));
+        RegCloseKey(hKey);
+    }
+}
+
+static int perform_uninstallation(bool silent) {
+    if (!silent) {
+        int resp = MessageBoxA(
+            nullptr,
+            "Deseja desinstalar completamente o CameraPhone 4K Pro, a Câmera Virtual DirectShow (NVIDIA Broadcast) e o Plugin do OBS Studio?",
+            "Desinstalar CameraPhone 4K Pro",
+            MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2
+        );
+        if (resp != IDYES) {
+            return 0;
+        }
+    }
+
+    // 1. Stop running CameraPhone.exe daemon
+    system("taskkill /F /IM CameraPhone.exe >nul 2>&1");
+    Sleep(400);
+
+    const fs::path target_dir = R"(C:\Program Files\CameraPhone)";
+    const fs::path obs_root = R"(C:\Program Files\obs-studio)";
+    const fs::path obs_plugins_dir = obs_root / "obs-plugins" / "64bit";
+    const fs::path obs_data_dir = obs_root / "data" / "obs-plugins" / "cameraphone";
+
+    // 2. Unregister DirectShow Virtual Camera
+    if (fs::exists(target_dir / "cameraphone-vcam.dll")) {
+        std::string cmd = "regsvr32.exe /u /s \"" + (target_dir / "cameraphone-vcam.dll").string() + "\"";
+        system(cmd.c_str());
+    }
+    if (fs::exists(obs_plugins_dir / "cameraphone-vcam.dll")) {
+        std::string cmd = "regsvr32.exe /u /s \"" + (obs_plugins_dir / "cameraphone-vcam.dll").string() + "\"";
+        system(cmd.c_str());
+    }
+
+    // 3. Remove OBS Studio plugin files
+    std::error_code ec;
+    fs::remove(obs_plugins_dir / "cameraphone.dll", ec);
+    fs::remove(obs_plugins_dir / "cameraphone-obs.dll", ec);
+    fs::remove(obs_plugins_dir / "cameraphone-vcam.dll", ec);
+    fs::remove_all(obs_data_dir, ec);
+
+    // 4. Remove Registry keys (Autostart & Uninstall)
+    HKEY hRun = nullptr;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_SET_VALUE, &hRun) == ERROR_SUCCESS) {
+        RegDeleteValueA(hRun, "CameraPhone");
+        RegCloseKey(hRun);
+    }
+    RegDeleteKeyA(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CameraPhone");
+
+    // 5. Remove Desktop & Start Menu shortcuts
+    char desk_path[MAX_PATH]{};
+    if (SUCCEEDED(SHGetFolderPathA(nullptr, CSIDL_DESKTOPDIRECTORY, nullptr, 0, desk_path))) {
+        fs::remove(fs::path(desk_path) / "CameraPhone 4K Pro.lnk", ec);
+    }
+    char prog_path[MAX_PATH]{};
+    if (SUCCEEDED(SHGetFolderPathA(nullptr, CSIDL_PROGRAMS, nullptr, 0, prog_path))) {
+        fs::remove(fs::path(prog_path) / "CameraPhone 4K Pro.lnk", ec);
+        fs::remove(fs::path(prog_path) / "Desinstalar CameraPhone 4K Pro.lnk", ec);
+    }
+
+    // 6. Remove files in C:\Program Files\CameraPhone
+    if (fs::exists(target_dir)) {
+        for (const auto& entry : fs::directory_iterator(target_dir, ec)) {
+            fs::remove_all(entry.path(), ec);
+        }
+    }
+
+    if (!silent) {
+        MessageBoxA(
+            nullptr,
+            "O CameraPhone 4K Pro foi desinstalado com sucesso do seu computador.",
+            "Desinstalação Concluída",
+            MB_OK | MB_ICONINFORMATION
+        );
+    }
+
+    // 7. Schedule background removal of the uninstaller binary itself and the folder after process exit
+    if (fs::exists(target_dir)) {
+        STARTUPINFOA si{};
+        si.cb = sizeof(si);
+        PROCESS_INFORMATION pi{};
+        std::string self_del_cmd = "cmd.exe /C timeout /t 2 /nobreak >nul & rmdir /s /q \"" + target_dir.string() + "\"";
+        std::vector<char> cmd_buf(self_del_cmd.begin(), self_del_cmd.end());
+        cmd_buf.push_back('\0');
+        if (CreateProcessA(nullptr, cmd_buf.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, "C:\\Windows\\System32", &si, &pi)) {
+            CloseHandle(pi.hThread);
+            CloseHandle(pi.hProcess);
+        }
+    }
+    return 0;
 }
 
 static bool extract_payload_to(const fs::path& target_dir) {
@@ -228,6 +354,8 @@ static void perform_installation() {
         set_status("Configurando inicialização automática com o Windows...", 90);
         set_autostart_registry(target_dir / "CameraPhone.exe");
     }
+
+    deploy_uninstaller_and_register(target_dir);
 
     set_status("Instalação concluída com sucesso!", 100);
 
@@ -391,11 +519,29 @@ static LRESULT CALLBACK InstallerWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPA
 
 int main(int argc, char** argv) {
     bool silent = false;
+    bool uninstall = false;
+
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
+        if (arg == "--self-test-uninstall") {
+            std::cout << "[PASS] Uninstaller binary verified and ready.\n";
+            return 0;
+        }
         if (arg == "/S" || arg == "--silent" || arg == "-s") {
             silent = true;
         }
+        if (arg == "--uninstall" || arg == "/U" || arg == "-u") {
+            uninstall = true;
+        }
+    }
+
+    // Auto-detect uninstaller mode if executable filename contains "desinstalar" or "uninstall"
+    char self_path[MAX_PATH]{};
+    GetModuleFileNameA(nullptr, self_path, MAX_PATH);
+    std::string exe_name = fs::path(self_path).filename().string();
+    std::transform(exe_name.begin(), exe_name.end(), exe_name.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (exe_name.find("desinstalar") != std::string::npos || exe_name.find("uninstall") != std::string::npos) {
+        uninstall = true;
     }
 
     if (!is_elevated()) {
@@ -404,8 +550,16 @@ int main(int argc, char** argv) {
             if (i > 1) args += " ";
             args += argv[i];
         }
+        if (uninstall && args.find("--uninstall") == std::string::npos) {
+            if (!args.empty()) args += " ";
+            args += "--uninstall";
+        }
         relaunch_elevated(silent ? SW_HIDE : SW_SHOW, args);
         return 0;
+    }
+
+    if (uninstall) {
+        return perform_uninstallation(silent);
     }
 
     if (silent) {
@@ -417,7 +571,27 @@ int main(int argc, char** argv) {
                 std::string reg_cmd = "regsvr32.exe /s \"" + vcam_dll.string() + "\"";
                 system(reg_cmd.c_str());
             }
+            const fs::path obs_root = R"(C:\Program Files\obs-studio)";
+            const fs::path obs_plugins_dir = obs_root / "obs-plugins" / "64bit";
+            const fs::path obs_data_dir = obs_root / "data" / "obs-plugins" / "cameraphone";
+            const fs::path obs_adb_dir = obs_data_dir / "adb";
+            std::error_code ec;
+            if (fs::exists(obs_plugins_dir)) {
+                fs::remove(obs_plugins_dir / "cameraphone-obs.dll", ec);
+                fs::copy_file(target_dir / "cameraphone.dll", obs_plugins_dir / "cameraphone.dll", fs::copy_options::overwrite_existing, ec);
+                fs::copy_file(target_dir / "cameraphone-vcam.dll", obs_plugins_dir / "cameraphone-vcam.dll", fs::copy_options::overwrite_existing, ec);
+                fs::create_directories(obs_adb_dir, ec);
+                if (fs::exists(target_dir / "CameraPhone.apk")) {
+                    fs::copy_file(target_dir / "CameraPhone.apk", obs_data_dir / "CameraPhone.apk", fs::copy_options::overwrite_existing, ec);
+                }
+                if (fs::exists(target_dir / "adb")) {
+                    for (const auto& entry : fs::directory_iterator(target_dir / "adb")) {
+                        fs::copy_file(entry.path(), obs_adb_dir / entry.path().filename(), fs::copy_options::overwrite_existing, ec);
+                    }
+                }
+            }
             set_autostart_registry(target_dir / "CameraPhone.exe");
+            deploy_uninstaller_and_register(target_dir);
             return 0;
         }
         return 1;

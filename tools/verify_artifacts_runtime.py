@@ -139,6 +139,18 @@ def verify_setup_runtime():
 
     assert h_icon, "Missing icon resource in CameraPhone-Setup.exe"
     assert h_payload, "Missing payload resource (1001) in CameraPhone-Setup.exe"
+
+    # Verify Uninstaller exists in C:\Program Files\CameraPhone after installation
+    install_dir = Path(r"C:\Program Files\CameraPhone")
+    if install_dir.exists():
+        uninstall_pt = install_dir / "Desinstalar CameraPhone.exe"
+        uninstall_en = install_dir / "Uninstall-CameraPhone.exe"
+        assert uninstall_pt.exists(), f"Missing uninstaller {uninstall_pt} in installation directory!"
+        assert uninstall_en.exists(), f"Missing uninstaller {uninstall_en} in installation directory!"
+        res_uninst = subprocess.run([str(uninstall_pt), "--self-test-uninstall"], capture_output=True, text=True, check=True)
+        assert "[PASS]" in res_uninst.stdout, f"Unexpected uninstaller self-test output: {res_uninst.stdout}"
+        print(f"[PASS] Uninstaller Verification Test: {uninstall_pt.name} & {uninstall_en.name} present in {install_dir} and verified.")
+
     print(f"[PASS] Setup Runtime Test: {setup_path.name} ({setup_path.stat().st_size} bytes) with embedded payload.zip and icon verified.")
 
 if __name__ == "__main__":

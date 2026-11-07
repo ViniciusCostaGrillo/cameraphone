@@ -456,9 +456,14 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        var anyGranted = false
         for (i in permissions.indices) {
             val granted = grantResults.getOrNull(i) == PackageManager.PERMISSION_GRANTED
+            if (granted) anyGranted = true
             AppLogger.info("Permissions", "${permissions[i]} -> ${if (granted) "GRANTED" else "DENIED"}")
+        }
+        if (anyGranted) {
+            streamService?.onPermissionsGranted()
         }
     }
 

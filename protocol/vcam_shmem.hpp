@@ -223,7 +223,7 @@ public:
         hdr->linesize[0]  = width;
         hdr->linesize[1]  = width;
         hdr->linesize[2]  = 0;
-        hdr->linesize[3]  = 0;
+        hdr->linesize[3]  = static_cast<uint32_t>(GetTickCount64() & 0xFFFFFFFFu);
         hdr->frame_index  = ++frame_counter_;
 
         if (event_handle_) {
@@ -309,7 +309,7 @@ public:
 #endif
     }
 
-    bool read_frame(VCamSharedHeader& out_hdr, std::vector<uint8_t>& out_payload) {
+    bool read_frame(VCamSharedHeader& out_hdr, std::vector<uint8_t>& out_payload, uint32_t max_age_ms = 2500) {
 #ifdef _WIN32
         if (!mapped_ptr_ && !open()) return false;
         const auto* hdr = reinterpret_cast<const VCamSharedHeader*>(mapped_ptr_);
@@ -319,13 +319,20 @@ public:
         if (sizeof(VCamSharedHeader) + hdr->data_size > kVCamSharedMemSize) {
             return false;
         }
+        if (max_age_ms > 0 && hdr->linesize[3] != 0) {
+            uint32_t now_tick = static_cast<uint32_t>(GetTickCount64() & 0xFFFFFFFFu);
+            uint32_t age_ms = now_tick - hdr->linesize[3];
+            if (age_ms > max_age_ms) {
+                return false;
+            }
+        }
         out_hdr = *hdr;
         out_payload.resize(hdr->data_size);
         const uint8_t* src = reinterpret_cast<const uint8_t*>(mapped_ptr_) + sizeof(VCamSharedHeader);
         std::memcpy(out_payload.data(), src, hdr->data_size);
         return true;
 #else
-        (void)out_hdr; (void)out_payload;
+        (void)out_hdr; (void)out_payload; (void)max_age_ms;
         return false;
 #endif
     }

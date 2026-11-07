@@ -151,6 +151,7 @@ public:
 
     uint32_t GetCurrentWidth() const { return m_Width; }
     uint32_t GetCurrentHeight() const { return m_Height; }
+    bool IsYUY2() const { return m_CurrentMediaType.subtype == MEDIASUBTYPE_YUY2_Local; }
     REFERENCE_TIME GetAvgTimePerFrame() const { return m_AvgTimePerFrame; }
 
 private:
@@ -792,8 +793,85 @@ STDMETHODIMP CVCamFilter::QueryVendorInfo(LPWSTR* pVendorInfo) {
     return S_OK;
 }
 
+static void EnsureCompanionRunning() {
+    HANDLE hObs = OpenMutexW(SYNCHRONIZE, FALSE, camphone::kOBSStreamingMutexName);
+    if (hObs) {
+        CloseHandle(hObs);
+        return;
+    }
+    HANDLE hComp = OpenMutexA(SYNCHRONIZE, FALSE, "Local\\CameraPhone_Companion_Mutex");
+    if (hComp) {
+        CloseHandle(hComp);
+        return;
+    }
+    const char* exe_path = "C:\\Program Files\\CameraPhone\\CameraPhone.exe";
+    if (GetFileAttributesA(exe_path) != INVALID_FILE_ATTRIBUTES) {
+        STARTUPINFOA si{};
+        si.cb = sizeof(si);
+        PROCESS_INFORMATION pi{};
+        char cmd[512];
+        snprintf(cmd, sizeof(cmd), "\"%s\" --background", exe_path);
+        if (CreateProcessA(nullptr, cmd, nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+            CloseHandle(pi.hThread);
+            CloseHandle(pi.hProcess);
+        }
+    }
+}
+
+static void BlitOrScaleNV12(const uint8_t* src, uint32_t src_w, uint32_t src_h,
+                            uint8_t* dst, uint32_t dst_w, uint32_t dst_h, bool dst_yuy2) {
+    const uint8_t* src_y  = src;
+    const uint8_t* src_uv = src + (src_w * src_h);
+
+    if (!dst_yuy2) {
+        if (src_w == dst_w && src_h == dst_h) {
+            std::memcpy(dst, src, (dst_w * dst_h * 3) / 2);
+            return;
+        }
+        // Nearest-neighbor scale NV12 -> NV12
+        uint8_t* dst_y  = dst;
+        uint8_t* dst_uv = dst + (dst_w * dst_h);
+        for (uint32_t y = 0; y < dst_h; ++y) {
+            uint32_t sy = (y * src_h) / dst_h;
+            const uint8_t* srow = src_y + sy * src_w;
+            uint8_t* drow = dst_y + y * dst_w;
+            for (uint32_t x = 0; x < dst_w; ++x) {
+                drow[x] = srow[(x * src_w) / dst_w];
+            }
+        }
+        for (uint32_t y = 0; y < dst_h / 2; ++y) {
+            uint32_t sy = (y * (src_h / 2)) / (dst_h / 2);
+            const uint8_t* srow = src_uv + sy * src_w;
+            uint8_t* drow = dst_uv + y * dst_w;
+            for (uint32_t x = 0; x < dst_w / 2; ++x) {
+                uint32_t sx = (x * (src_w / 2)) / (dst_w / 2);
+                drow[x * 2]     = srow[sx * 2];
+                drow[x * 2 + 1] = srow[sx * 2 + 1];
+            }
+        }
+    } else {
+        // Convert NV12 -> YUY2 (with scaling if needed)
+        for (uint32_t y = 0; y < dst_h; ++y) {
+            uint32_t sy = (y * src_h) / dst_h;
+            const uint8_t* sy_row = src_y + sy * src_w;
+            const uint8_t* suv_row = src_uv + (sy / 2) * src_w;
+            uint8_t* drow = dst + y * (dst_w * 2);
+            for (uint32_t x = 0; x < dst_w; x += 2) {
+                uint32_t sx0 = (x * src_w) / dst_w;
+                uint32_t sx1 = ((x + 1) * src_w) / dst_w;
+                uint32_t uv_idx = (sx0 / 2) * 2;
+                drow[x * 2 + 0] = sy_row[sx0];
+                drow[x * 2 + 1] = suv_row[uv_idx];
+                drow[x * 2 + 2] = sy_row[sx1];
+                drow[x * 2 + 3] = suv_row[uv_idx + 1];
+            }
+        }
+    }
+}
+
 void CVCamFilter::StartWorker() {
     if (m_WorkerRunning.exchange(true)) return;
+    EnsureCompanionRunning();
     m_Worker = std::thread([this]() { WorkerLoop(); });
 }
 
@@ -810,6 +888,8 @@ void CVCamFilter::WorkerLoop() {
 
     uint64_t frame_index = 0;
     auto last_time = std::chrono::steady_clock::now();
+    std::vector<uint8_t> payload;
+    std::vector<uint8_t> standby_nv12;
 
     while (m_WorkerRunning.load()) {
         if (!m_pPin || !m_pPin->IsConnected()) {
@@ -841,27 +921,35 @@ void CVCamFilter::WorkerLoop() {
 
         uint32_t w = m_pPin->GetCurrentWidth();
         uint32_t h = m_pPin->GetCurrentHeight();
-        uint32_t needed_nv12 = (w * h * 3) / 2;
+        bool is_yuy2 = m_pPin->IsYUY2();
+        uint32_t needed_bytes = is_yuy2 ? (w * h * 2) : ((w * h * 3) / 2);
+
+        // Low-latency wakeup hint (up to 4ms), then read the latest active frame if fresh (< 2500ms)
+        shmem_reader.wait_for_frame(4);
 
         bool has_frame = false;
-        if (shmem_reader.is_open()) {
-            if (shmem_reader.wait_for_frame(8)) {
-                camphone::VCamSharedHeader hdr{};
-                std::vector<uint8_t> payload;
-                if (shmem_reader.read_frame(hdr, payload) && payload.size() >= needed_nv12) {
-                    if (pBuffer && buf_len >= static_cast<long>(needed_nv12)) {
-                        std::memcpy(pBuffer, payload.data(), needed_nv12);
-                        has_frame = true;
-                    }
-                }
+        camphone::VCamSharedHeader hdr{};
+        if (shmem_reader.read_frame(hdr, payload, 2500)) {
+            uint32_t src_nv12_bytes = (hdr.width * hdr.height * 3) / 2;
+            if (hdr.width > 0 && hdr.height > 0 && payload.size() >= src_nv12_bytes &&
+                pBuffer && buf_len >= static_cast<long>(needed_bytes)) {
+                BlitOrScaleNV12(payload.data(), hdr.width, hdr.height, pBuffer, w, h, is_yuy2);
+                has_frame = true;
             }
         }
 
-        if (!has_frame && pBuffer && buf_len >= static_cast<long>(needed_nv12)) {
-            camphone::VCamStandbyRenderer::render_nv12(pBuffer, w, h, frame_index);
+        if (!has_frame && pBuffer && buf_len >= static_cast<long>(needed_bytes)) {
+            if (!is_yuy2) {
+                camphone::VCamStandbyRenderer::render_nv12(pBuffer, w, h, frame_index);
+            } else {
+                uint32_t nv12_sz = (w * h * 3) / 2;
+                if (standby_nv12.size() < nv12_sz) standby_nv12.resize(nv12_sz);
+                camphone::VCamStandbyRenderer::render_nv12(standby_nv12.data(), w, h, frame_index);
+                BlitOrScaleNV12(standby_nv12.data(), w, h, pBuffer, w, h, true);
+            }
         }
 
-        pSample->SetActualDataLength(needed_nv12);
+        pSample->SetActualDataLength(needed_bytes);
         pSample->SetSyncPoint(TRUE);
 
         REFERENCE_TIME avg_time = m_pPin->GetAvgTimePerFrame();

@@ -1,8 +1,11 @@
 #include <windows.h>
 #include <initguid.h>
 #include <dshow.h>
+#include <cassert>
 #include <iostream>
 #include <string>
+#include <vector>
+#include "../protocol/vcam_shmem.hpp"
 
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "oleaut32.lib")
@@ -124,7 +127,30 @@ int main() {
     CoUninitialize();
 
     if (found_cameraphone) {
-        std::cout << "=== SUCCESS: CameraPhone Virtual Camera fully operational! ===" << std::endl;
+        // Test VCamSharedMemoryReader lazy-open and frame freshness persistence (60Hz vs 20-30FPS)
+        camphone::VCamSharedMemoryReader reader;
+        camphone::VCamSharedMemoryWriter writer;
+        writer.open();
+        uint32_t w = 640, h = 480;
+        std::vector<uint8_t> y_plane(w * h, 200);
+        std::vector<uint8_t> uv_plane((w * h) / 2, 128);
+        const uint8_t* planes[4] = { y_plane.data(), uv_plane.data(), nullptr, nullptr };
+        int strides[4] = { static_cast<int>(w), static_cast<int>(w), 0, 0 };
+        assert(writer.write_frame(w, h, 23 /* NV12 */, planes, strides, 123456789ULL));
+
+        camphone::VCamSharedHeader hdr{};
+        std::vector<uint8_t> payload;
+        // Reader was NOT explicitly opened before read_frame -> must lazy-open and succeed
+        assert(reader.read_frame(hdr, payload, 2500));
+        assert(hdr.width == w && hdr.height == h);
+        // Subsequent 60Hz ticks without new write_frame must still return true while fresh
+        assert(reader.read_frame(hdr, payload, 2500));
+
+        // Simulate expired frame (max_age_ms = 10ms after sleeping 30ms)
+        Sleep(30);
+        assert(!reader.read_frame(hdr, payload, 10));
+
+        std::cout << "=== SUCCESS: CameraPhone Virtual Camera & Shmem Persistence fully operational! ===" << std::endl;
         return 0;
     } else {
         std::cerr << "=== FAILURE: CameraPhone Virtual Camera not found ===" << std::endl;
