@@ -47,11 +47,8 @@ static socket_t connect_with_timeout(const std::string& host, uint16_t port, int
     int nodelay = 1;
     setsockopt(s, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&nodelay), sizeof(nodelay));
 
-#ifdef _WIN32
-    DWORD tv = static_cast<DWORD>(timeout_ms);
-    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&tv), sizeof(tv));
-    setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&tv), sizeof(tv));
-#endif
+    int rcvbuf = 2 * 1024 * 1024; // 2 MB receive buffer for large 4K/1080p keyframes over Wi-Fi
+    setsockopt(s, SOL_SOCKET, SO_RCVBUF, reinterpret_cast<const char*>(&rcvbuf), sizeof(rcvbuf));
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
@@ -60,10 +57,46 @@ static socket_t connect_with_timeout(const std::string& host, uint16_t port, int
         close_sock(s);
         return kInvalidSocket;
     }
+
+#ifdef _WIN32
+    u_long nonblock = 1;
+    ioctlsocket(s, FIONBIO, &nonblock);
+    int rc = connect(s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+    if (rc != 0) {
+        int err = WSAGetLastError();
+        if (err != WSAEWOULDBLOCK && err != WSAEINPROGRESS) {
+            close_sock(s);
+            return kInvalidSocket;
+        }
+        fd_set wfds;
+        FD_ZERO(&wfds);
+        FD_SET(s, &wfds);
+        timeval tv{};
+        tv.tv_sec = timeout_ms / 1000;
+        tv.tv_usec = (timeout_ms % 1000) * 1000;
+        if (select(0, nullptr, &wfds, nullptr, &tv) <= 0 || !FD_ISSET(s, &wfds)) {
+            close_sock(s);
+            return kInvalidSocket;
+        }
+        int so_err = 0;
+        int len = sizeof(so_err);
+        if (getsockopt(s, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&so_err), &len) != 0 || so_err != 0) {
+            close_sock(s);
+            return kInvalidSocket;
+        }
+    }
+    nonblock = 0;
+    ioctlsocket(s, FIONBIO, &nonblock);
+
+    DWORD rcv_tv = static_cast<DWORD>(timeout_ms);
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&rcv_tv), sizeof(rcv_tv));
+    setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&rcv_tv), sizeof(rcv_tv));
+#else
     if (connect(s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
         close_sock(s);
         return kInvalidSocket;
     }
+#endif
     return s;
 }
 
@@ -345,6 +378,10 @@ void StreamClient::start_streaming(const StreamConfig& cfg, BoundedFrameQueue& v
             }
 
             DiagnosticLogger::info("StreamClient", "Binary stream connected to " + cfg.host + ":" + std::to_string(cfg.port) + " (" + cfg.codec + " " + std::to_string(cfg.width) + "x" + std::to_string(cfg.height) + ")");
+#ifdef _WIN32
+            DWORD stream_rcv_tv = 8000; // 8s receive timeout for large keyframes over Wi-Fi
+            setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&stream_rcv_tv), sizeof(stream_rcv_tv));
+#endif
             connected_.store(true);
             std::array<uint8_t, kHeaderSize> wire_hdr{};
             while (running_.load()) {

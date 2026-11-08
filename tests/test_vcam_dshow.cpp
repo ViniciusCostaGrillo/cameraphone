@@ -113,6 +113,9 @@ public:
 
 int main() {
     std::cout << "=== CameraPhone Virtual Camera DirectShow Verification ===" << std::endl;
+    camphone::OBSStreamGuard test_guard;
+    test_guard.acquire();
+    Sleep(80);
 
     HRESULT hr = CoInitialize(nullptr);
     if (FAILED(hr)) {

@@ -233,18 +233,24 @@ struct CameraPhoneSourceContext {
             }
             DiscoveryManager::ensure_usb_tunnel_ready(config.port, config.port, true);
         } else {
+            std::string saved_ip, saved_pin;
+            DiscoveryManager::load_wifi_target(saved_ip, saved_pin);
             if (config.host.empty() || config.host == "192.168.1.100") {
-                std::string disc_pin;
-                auto wifi_devs = DiscoveryManager::discover_wifi_devices(config.port, &disc_pin);
-                if (!wifi_devs.empty()) {
-                    config.host = wifi_devs.front().host;
-                }
-                if (config.pin.empty() && !disc_pin.empty()) {
-                    config.pin = disc_pin;
+                if (!saved_ip.empty() && saved_ip != "127.0.0.1") {
+                    config.host = saved_ip;
+                } else {
+                    std::string disc_pin;
+                    auto wifi_devs = DiscoveryManager::discover_wifi_devices(config.port, &disc_pin);
+                    if (!wifi_devs.empty()) {
+                        config.host = wifi_devs.front().host;
+                    }
+                    if (config.pin.empty() && !disc_pin.empty()) {
+                        config.pin = disc_pin;
+                    }
                 }
             }
             if (config.pin.empty()) {
-                config.pin = "usb-zero-config";
+                config.pin = !saved_pin.empty() ? saved_pin : "usb-zero-config";
             } else if (config.pin != "usb-zero-config" && config.pin.length() != 6) {
                 DiagnosticLogger::info("OBS-Source", "Wi-Fi PIN incomplete (" + std::to_string(config.pin.length()) + "/6 digits). Awaiting complete PIN.");
                 return;

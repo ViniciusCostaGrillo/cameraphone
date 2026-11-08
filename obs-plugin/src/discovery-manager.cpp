@@ -502,7 +502,22 @@ std::vector<DiscoveredDevice> DiscoveryManager::discover_wifi_devices(uint16_t p
         *out_discovered_pin = saved_pin;
     }
 
-    // 1. Try UDP Broadcast Probe on port 4749 first (returns IP + PIN + Model in < 60ms if v1.3.4+ APK is running)
+    // 1. Check saved Wi-Fi IP FIRST with a Wi-Fi DTIM-friendly timeout (2 tries x 450ms)
+    // This avoids flooding the Wi-Fi router with subnet scans when the phone's IP is already known!
+    if (!saved_ip.empty() && saved_ip != "127.0.0.1") {
+        if (probe_tcp_port(saved_ip, port, 450) || probe_tcp_port(saved_ip, port, 450)) {
+            found.push_back(DiscoveredDevice{
+                saved_ip,
+                "Wi-Fi: " + saved_ip,
+                saved_ip,
+                port,
+                false
+            });
+            return found;
+        }
+    }
+
+    // 2. Try UDP Broadcast & Unicast Probe on port 4749
     SOCKET udp = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (udp != INVALID_SOCKET) {
         BOOL bcast = TRUE;
@@ -516,6 +531,13 @@ std::vector<DiscoveredDevice> DiscoveryManager::discover_wifi_devices(uint16_t p
         baddr.sin_port = htons(4749);
         baddr.sin_addr.s_addr = INADDR_BROADCAST;
         sendto(udp, probe_msg, static_cast<int>(std::strlen(probe_msg)), 0, reinterpret_cast<sockaddr*>(&baddr), sizeof(baddr));
+
+        if (!saved_ip.empty() && saved_ip != "127.0.0.1") {
+            sockaddr_in uaddr = baddr;
+            if (inet_pton(AF_INET, saved_ip.c_str(), &uaddr.sin_addr) == 1) {
+                sendto(udp, probe_msg, static_cast<int>(std::strlen(probe_msg)), 0, reinterpret_cast<sockaddr*>(&uaddr), sizeof(uaddr));
+            }
+        }
 
         // Also send to subnet broadcast of each local interface
         char host_name[256]{};
@@ -538,7 +560,7 @@ std::vector<DiscoveredDevice> DiscoveryManager::discover_wifi_devices(uint16_t p
         fd_set rfds;
         FD_ZERO(&rfds);
         FD_SET(udp, &rfds);
-        timeval tv{0, 60000}; // 60ms
+        timeval tv{0, 120000}; // 120ms
         if (select(0, &rfds, nullptr, nullptr, &tv) > 0) {
             char buf[256]{};
             sockaddr_in from{};
@@ -581,21 +603,7 @@ std::vector<DiscoveredDevice> DiscoveryManager::discover_wifi_devices(uint16_t p
         return found;
     }
 
-    // 2. Check saved Wi-Fi IP if available (< 40ms)
-    if (!saved_ip.empty() && saved_ip != "127.0.0.1") {
-        if (probe_tcp_port(saved_ip, port, 50)) {
-            found.push_back(DiscoveredDevice{
-                saved_ip,
-                "Wi-Fi: " + saved_ip,
-                saved_ip,
-                port,
-                false
-            });
-            return found;
-        }
-    }
-
-    // 3. Fast parallel non-blocking TCP scan on local /24 subnets (batches of 60 sockets, 70ms per batch)
+    // 3. Fast parallel non-blocking TCP scan on local /24 subnets (batches of 50 sockets, 160ms per batch)
     std::vector<std::string> prefixes;
     std::vector<std::string> self_ips;
     char host_name[256]{};
@@ -613,15 +621,14 @@ std::vector<DiscoveredDevice> DiscoveryManager::discover_wifi_devices(uint16_t p
                 auto last_dot = ip.rfind('.');
                 if (last_dot != std::string::npos) {
                     std::string prefix = ip.substr(0, last_dot + 1);
-                    // Put non-VMware prefixes (not .5. or .26.) at the front
+                    // Skip VMware virtual host-only adapters (.5. and .26.)
+                    if (prefix.find("192.168.5.") == 0 || prefix.find("192.168.26.") == 0) {
+                        continue;
+                    }
                     bool exists = false;
                     for (const auto& pr : prefixes) if (pr == prefix) exists = true;
                     if (!exists) {
-                        if (prefix.find("192.168.5.") == 0 || prefix.find("192.168.26.") == 0) {
-                            prefixes.push_back(prefix);
-                        } else {
-                            prefixes.insert(prefixes.begin(), prefix);
-                        }
+                        prefixes.push_back(prefix);
                     }
                 }
             }
@@ -660,7 +667,7 @@ std::vector<DiscoveredDevice> DiscoveryManager::discover_wifi_devices(uint16_t p
                 fd_set wfds;
                 FD_ZERO(&wfds);
                 for (SOCKET s : socks) FD_SET(s, &wfds);
-                timeval tv{0, 75000}; // 75ms per batch of 60 IPs
+                timeval tv{0, 160000}; // 160ms per batch of 60 IPs
                 if (select(0, nullptr, &wfds, nullptr, &tv) > 0) {
                     for (size_t i = 0; i < socks.size(); ++i) {
                         if (FD_ISSET(socks[i], &wfds)) {

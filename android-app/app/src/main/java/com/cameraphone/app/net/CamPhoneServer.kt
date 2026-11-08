@@ -29,6 +29,8 @@ class CamPhoneServer(
 
     @Volatile
     private var activeStreamOutput: OutputStream? = null
+    @Volatile
+    var lastStreamRemoteIp: String = "127.0.0.1"
     private val writeLock = Any()
 
     val boundPort: Int
@@ -76,6 +78,7 @@ class CamPhoneServer(
 
     private fun handleClient(socket: Socket) {
         socket.tcpNoDelay = true
+        try { socket.sendBufferSize = 1024 * 1024 } catch (_: Exception) {}
         socket.soTimeout = 5000
         val inetAddr = socket.inetAddress
         val remoteIp = if (inetAddr?.isLoopbackAddress == true) {
@@ -157,6 +160,7 @@ class CamPhoneServer(
                         } else {
                             activeStreamOutput = out
                         }
+                        lastStreamRemoteIp = remoteIp
                         ownsActiveStream = true
                     }
                     val params = parseQuery(query)

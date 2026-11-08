@@ -8,9 +8,11 @@ import android.content.Context
 import android.content.Intent
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.net.wifi.WifiManager
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import com.cameraphone.app.camera.Camera2Controller
 import com.cameraphone.app.camera.HardwareAudioEncoder
 import com.cameraphone.app.camera.HardwareVideoEncoder
@@ -44,6 +46,8 @@ class CameraStreamService : Service() {
     private var nsdListener: NsdManager.RegistrationListener? = null
     private var udpSocket: DatagramSocket? = null
     private val udpRunning = AtomicBoolean(false)
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
     private lateinit var capabilities: DeviceCapabilityProfile
 
     @Volatile
@@ -83,6 +87,26 @@ class CameraStreamService : Service() {
 
         createNotificationChannel()
         startForeground(1001, buildNotification("Ready for OBS Studio & NVIDIA Broadcast connection (USB & Wi-Fi)"))
+        try {
+            val pm = applicationContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
+            wakeLock = pm?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CameraPhone::StreamWakeLock")?.apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            val lockMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+            } else {
+                @Suppress("DEPRECATION")
+                WifiManager.WIFI_MODE_FULL_HIGH_PERF
+            }
+            wifiLock = wm?.createWifiLock(lockMode, "CameraPhone::StreamWifiLock")?.apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (e: Throwable) {
+            AppLogger.warn("Service", "Could not acquire Wi-Fi/Power WakeLock: ${e.message}")
+        }
         capabilities = CapabilityProbe.probeDevice(this)
         AppLogger.info("Service", "Probed ${capabilities.lenses.size} lenses, codecs=${capabilities.codecs}")
         cameraController = Camera2Controller(this)
@@ -146,7 +170,12 @@ class CameraStreamService : Service() {
         val cam = cameraController ?: return
         try {
             val (actualSize, actualFpsRange) = cam.pickSupportedResolutionAndFps(lensId, w, h, fps)
-            val bitrate = if (actualSize.width >= 3840) 80_000_000 else 30_000_000
+            val isWifi = (server?.lastStreamRemoteIp ?: "127.0.0.1") != "127.0.0.1"
+            val bitrate = if (isWifi) {
+                if (actualSize.width >= 3840) 15_000_000 else 6_000_000
+            } else {
+                if (actualSize.width >= 3840) 80_000_000 else 25_000_000
+            }
             val vEnc = HardwareVideoEncoder(
                 codec,
                 actualSize.width,
@@ -306,6 +335,8 @@ class CameraStreamService : Service() {
         stopUdpBeacon()
         unregisterMdns()
         server?.stop()
+        try { if (wifiLock?.isHeld == true) wifiLock?.release() } catch (_: Exception) {}
+        try { if (wakeLock?.isHeld == true) wakeLock?.release() } catch (_: Exception) {}
         super.onDestroy()
     }
 }

@@ -53,7 +53,7 @@ class HardwareVideoEncoder(
             try {
                 val candidate = MediaCodec.createEncoderByType(tryMime)
                 val tryFps = if (tryW < width) 30 else fps
-                var tryBitrate = if (tryW >= 3840) clampBitrateBps(bitrateBps) else 20_000_000
+                var tryBitrate = if (tryW == width) clampBitrateBps(bitrateBps) else 8_000_000
                 try {
                     val vCaps = candidate.codecInfo.getCapabilitiesForType(tryMime)?.videoCapabilities
                     if (vCaps != null) {

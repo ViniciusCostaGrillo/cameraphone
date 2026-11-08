@@ -121,39 +121,55 @@ static bool install_zero_config_bundle(std::string& out_msg, bool allow_uac_prom
     });
     if (!vcam_src.empty()) {
         const fs::path vcam_dst = obs_plugins_dir / "cameraphone-vcam.dll";
-        fs::copy_file(vcam_src, vcam_dst, fs::copy_options::overwrite_existing, ec);
-        std::string reg_cmd = "regsvr32.exe /s \"" + (ec ? vcam_src.string() : vcam_dst.string()) + "\"";
-        system(reg_cmd.c_str());
+        std::error_code vcam_ec;
+        fs::copy_file(vcam_src, vcam_dst, fs::copy_options::overwrite_existing, vcam_ec);
+        if (!vcam_ec) {
+            std::string reg_cmd = "regsvr32.exe /s \"" + vcam_dst.string() + "\"";
+            system(reg_cmd.c_str());
+        } else if (!fs::exists(vcam_dst)) {
+            std::string reg_cmd = "regsvr32.exe /s \"" + vcam_src.string() + "\"";
+            system(reg_cmd.c_str());
+        }
     }
 
-    if (!ec) {
+    if (!ec || fs::exists(dll_dst)) {
+        std::error_code data_ec;
         if (!apk_src.empty()) {
-            fs::copy_file(apk_src, obs_data_dir / "CameraPhone.apk", fs::copy_options::overwrite_existing, ec);
+            fs::copy_file(apk_src, obs_data_dir / "CameraPhone.apk", fs::copy_options::overwrite_existing, data_ec);
         }
         if (!adb_src.empty()) {
             const fs::path adb_parent = adb_src.parent_path();
-            fs::copy_file(adb_src, obs_adb_dir / "adb.exe", fs::copy_options::overwrite_existing, ec);
+            fs::copy_file(adb_src, obs_adb_dir / "adb.exe", fs::copy_options::overwrite_existing, data_ec);
             if (fs::exists(adb_parent / "AdbWinApi.dll")) {
-                fs::copy_file(adb_parent / "AdbWinApi.dll", obs_adb_dir / "AdbWinApi.dll", fs::copy_options::overwrite_existing, ec);
+                fs::copy_file(adb_parent / "AdbWinApi.dll", obs_adb_dir / "AdbWinApi.dll", fs::copy_options::overwrite_existing, data_ec);
             }
             if (fs::exists(adb_parent / "AdbWinUsbApi.dll")) {
-                fs::copy_file(adb_parent / "AdbWinUsbApi.dll", obs_adb_dir / "AdbWinUsbApi.dll", fs::copy_options::overwrite_existing, ec);
+                fs::copy_file(adb_parent / "AdbWinUsbApi.dll", obs_adb_dir / "AdbWinUsbApi.dll", fs::copy_options::overwrite_existing, data_ec);
             }
         }
-        out_msg = (g_ui_lang == UiLanguage::PT)
-            ? "[ZERO-CONFIG INSTALADO COM SUCESSO]\r\n"
-              "  * Plugin OBS: C:\\Program Files\\obs-studio\\obs-plugins\\64bit\\cameraphone.dll\r\n"
-              "  * Câmera Virtual: CameraPhone Virtual Camera registrada (NVIDIA Broadcast pronta!)\r\n"
-              "  * Driver ADB & APK atualizados para conexao USB/Wi-Fi plug-and-play."
-            : "[ZERO-CONFIG INSTALLED SUCCESSFULLY]\r\n"
-              "  * OBS Plugin: C:\\Program Files\\obs-studio\\obs-plugins\\64bit\\cameraphone.dll\r\n"
-              "  * Virtual Camera: CameraPhone Virtual Camera registered (NVIDIA Broadcast ready!)\r\n"
-              "  * ADB Driver & APK updated for plug-and-play USB & Wi-Fi streaming.";
-        DiagnosticLogger::info("Installer", "Zero-config bundle installed successfully.");
-        return true;
+        if (!ec) {
+            out_msg = (g_ui_lang == UiLanguage::PT)
+                ? "[ZERO-CONFIG INSTALADO COM SUCESSO]\r\n"
+                  "  * Plugin OBS: C:\\Program Files\\obs-studio\\obs-plugins\\64bit\\cameraphone.dll\r\n"
+                  "  * Câmera Virtual: CameraPhone Virtual Camera registrada (NVIDIA Broadcast pronta!)\r\n"
+                  "  * Driver ADB & APK atualizados para conexao USB/Wi-Fi plug-and-play."
+                : "[ZERO-CONFIG INSTALLED SUCCESSFULLY]\r\n"
+                  "  * OBS Plugin: C:\\Program Files\\obs-studio\\obs-plugins\\64bit\\cameraphone.dll\r\n"
+                  "  * Virtual Camera: CameraPhone Virtual Camera registered (NVIDIA Broadcast ready!)\r\n"
+                  "  * ADB Driver & APK updated for plug-and-play USB & Wi-Fi streaming.";
+            DiagnosticLogger::info("Installer", "Zero-config bundle installed successfully.");
+            return true;
+        }
     }
 
     if (!allow_uac_prompt) {
+        if (fs::exists(dll_dst)) {
+            out_msg = (g_ui_lang == UiLanguage::PT)
+                ? "[ZERO-CONFIG ATIVO] Plugin cameraphone.dll + CameraPhone.apk + ADB instalados!"
+                : "[ZERO-CONFIG ACTIVE] Plugin cameraphone.dll + CameraPhone.apk + ADB installed!";
+            DiagnosticLogger::info("Installer", out_msg);
+            return true;
+        }
         out_msg = (g_ui_lang == UiLanguage::PT)
             ? "[ERRO] Sem permissao de escrita em C:\\Program Files (feche o OBS ou Broadcast e execute como Administrador)."
             : "[ERROR] No write permission in C:\\Program Files (close OBS or Broadcast and run as Administrator).";
@@ -251,20 +267,38 @@ private:
                 }
             }
 
-            // Priority 2: Automatic Wi-Fi LAN Discovery (UDP 4749 Beacon + Saved IP + Fast Subnet Scan)
+            // Priority 2a: Direct Wi-Fi check using cached Wi-Fi IP (zero extra probe sockets)
+            if (!connected_caps) {
+                std::string saved_ip, saved_pin;
+                if (DiscoveryManager::load_wifi_target(saved_ip, saved_pin) && !saved_ip.empty() && saved_ip != "127.0.0.1") {
+                    if (!saved_pin.empty() && m_client.fetch_capabilities(saved_ip, 4748, saved_pin, caps)) {
+                        target_host = saved_ip;
+                        target_pin = saved_pin;
+                        is_usb = false;
+                        connected_caps = true;
+                    } else if (m_client.fetch_capabilities(saved_ip, 4748, "usb-zero-config", caps)) {
+                        target_host = saved_ip;
+                        target_pin = "usb-zero-config";
+                        is_usb = false;
+                        connected_caps = true;
+                    }
+                }
+            }
+
+            // Priority 2b: Automatic Wi-Fi LAN Discovery (UDP 4749 Beacon + Fast Subnet Scan)
             if (!connected_caps) {
                 std::string disc_pin;
                 auto wifi_devs = DiscoveryManager::discover_wifi_devices(4748, &disc_pin);
                 if (!wifi_devs.empty()) {
                     const std::string wifi_ip = wifi_devs.front().host;
-                    if (m_client.fetch_capabilities(wifi_ip, 4748, "usb-zero-config", caps)) {
-                        target_host = wifi_ip;
-                        target_pin = "usb-zero-config";
-                        is_usb = false;
-                        connected_caps = true;
-                    } else if (!disc_pin.empty() && m_client.fetch_capabilities(wifi_ip, 4748, disc_pin, caps)) {
+                    if (!disc_pin.empty() && m_client.fetch_capabilities(wifi_ip, 4748, disc_pin, caps)) {
                         target_host = wifi_ip;
                         target_pin = disc_pin;
+                        is_usb = false;
+                        connected_caps = true;
+                    } else if (m_client.fetch_capabilities(wifi_ip, 4748, "usb-zero-config", caps)) {
+                        target_host = wifi_ip;
+                        target_pin = "usb-zero-config";
                         is_usb = false;
                         connected_caps = true;
                     }
@@ -274,7 +308,7 @@ private:
             if (!connected_caps) {
                 m_streaming.store(false);
                 m_status = "Waiting for phone on USB Cable or Wi-Fi...";
-                std::this_thread::sleep_for(std::chrono::milliseconds(1200));
+                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
                 continue;
             }
 
@@ -288,7 +322,7 @@ private:
             cfg.pin = target_pin;
             cfg.width = 1920;
             cfg.height = 1080;
-            cfg.fps = 60;
+            cfg.fps = is_usb ? 60 : 30;
             cfg.codec = caps.supports_hevc ? "hevc" : "h264";
 
             video_queue.clear();
@@ -425,8 +459,8 @@ static void fetch_and_display_all_logs() {
         std::string disc_pin;
         auto wifi_devs = DiscoveryManager::discover_wifi_devices(4748, &disc_pin);
         if (!wifi_devs.empty() &&
-            (client.fetch_remote_logs(wifi_devs[0].host, 4748, "usb-zero-config", apk_logs) ||
-             (!disc_pin.empty() && client.fetch_remote_logs(wifi_devs[0].host, 4748, disc_pin, apk_logs)))) {
+            ((!disc_pin.empty() && client.fetch_remote_logs(wifi_devs[0].host, 4748, disc_pin, apk_logs)) ||
+             client.fetch_remote_logs(wifi_devs[0].host, 4748, "usb-zero-config", apk_logs))) {
             ss << (g_ui_lang == UiLanguage::PT
                    ? "[2] LOGS REMOTOS DO APK NO CELULAR (Wi-Fi "
                    : "[2] REMOTE PHONE APK LOGS (Wi-Fi ")
@@ -541,7 +575,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
         g_feeder.start();
 
         std::string auto_install_msg;
-        install_zero_config_bundle(auto_install_msg, true);
+        const bool already_installed = fs::exists(R"(C:\Program Files\obs-studio\obs-plugins\64bit\cameraphone.dll)");
+        install_zero_config_bundle(auto_install_msg, !already_installed);
         append_log(auto_install_msg);
         append_log("[System] Automatic USB & Wi-Fi streaming to CameraPhone Virtual Camera (NVIDIA Broadcast) started.");
         append_log("[Tip] For USB or Wi-Fi: simply open CameraPhone on your phone (USB cable or same Wi-Fi network)!");
@@ -638,9 +673,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
                                 ? "[WI-FI DETECTADO] Celular encontrado na rede local em "
                                 : "[WI-FI DETECTED] Phone found on local network at ") + wip + ":4748");
                     conn_label = "Wi-Fi " + wip + ":4748";
-                    ok = client.fetch_capabilities(wip, 4748, "usb-zero-config", caps);
-                    if (!ok && !disc_pin.empty()) {
+                    if (!disc_pin.empty()) {
                         ok = client.fetch_capabilities(wip, 4748, disc_pin, caps);
+                    }
+                    if (!ok) {
+                        ok = client.fetch_capabilities(wip, 4748, "usb-zero-config", caps);
                     }
                     if (!ok) {
                         append_log(g_ui_lang == UiLanguage::PT
