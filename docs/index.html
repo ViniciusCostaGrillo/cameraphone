@@ -3,446 +3,1724 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CameraPhone 4K Pro — 4K60/120 HDR Studio Camera for NVIDIA Broadcast & OBS</title>
-  <meta name="description" content="Turn your Android phone into a 4K60/120 FPS 10-bit HDR studio camera for NVIDIA Broadcast, OBS Studio, Discord & Zoom. 100% Free, Open-Source, Zero Watermark, USB & Wi-Fi Zero-Config." />
+  <title>CameraPhone 4K Pro — High-End Studio Camera for NVIDIA Broadcast & OBS</title>
+  <meta name="description" content="Turn your Android phone into an agency-grade 4K60/120 FPS 10-bit HDR studio camera for NVIDIA Broadcast, OBS Studio, Discord & Zoom. 100% Free, Open-Source, Zero Watermarks." />
   <link rel="icon" type="image/png" href="cameraphone_logo.png" />
+
+  <!-- Premium Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- GSAP Animation Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+
   <style>
+    /* ==========================================================================
+       ANTIGRAVITY & HIGH-END VISUAL DESIGN SYSTEM
+       Obsidian Obsidian Black • Concentric Doppelrand • Spatial Depth
+       ========================================================================== */
     :root {
-      --bg: #0b0e14;
-      --card: #131822;
-      --card-border: #222b3a;
-      --cyan: #00e5ff;
-      --mint: #00e676;
-      --text: #f0f6fc;
-      --muted: #8b949e;
-      --nvidia: #76b900;
+      --bg-oled: #05070a;
+      --bg-surface: #0a0e14;
+      --card-outer: rgba(255, 255, 255, 0.06);
+      --card-inner: rgba(14, 18, 25, 0.72);
+      --card-inner-hover: rgba(18, 24, 34, 0.85);
+      
+      --accent-cyan: #00e5ff;
+      --accent-cyan-glow: rgba(0, 229, 255, 0.28);
+      --accent-nvidia: #76b900;
+      --accent-nvidia-glow: rgba(118, 185, 0, 0.25);
+      --accent-mint: #00e676;
+      --accent-danger: #ff4757;
+      
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      
+      --font-display: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+      
+      --ease-fluid: cubic-bezier(0.16, 1, 0.3, 1);
+      --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      background-color: var(--bg-oled);
+      color: var(--text-main);
+    }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
-      background: radial-gradient(circle at 50% 0%, #152238 0%, var(--bg) 55%);
-      color: var(--text);
+      font-family: var(--font-display);
+      background-color: var(--bg-oled);
+      color: var(--text-main);
       line-height: 1.6;
+      overflow-x: hidden;
       min-height: 100vh;
+      position: relative;
     }
-    a { color: var(--cyan); text-decoration: none; }
-    header {
-      position: sticky;
-      top: 0;
-      z-index: 50;
-      backdrop-filter: blur(14px);
-      background: rgba(11, 14, 20, 0.85);
-      border-bottom: 1px solid var(--card-border);
+
+    /* Fixed Atmospheric Background & Mesh Grid */
+    .ambient-canvas {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
     }
-    .nav {
-      max-width: 1140px;
+
+    .ambient-glow-1 {
+      position: absolute;
+      top: -200px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 900px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(0, 229, 255, 0.08) 0%, rgba(118, 185, 0, 0.03) 40%, transparent 70%);
+      filter: blur(80px);
+      border-radius: 50%;
+    }
+
+    .ambient-glow-2 {
+      position: absolute;
+      top: 45%;
+      right: -150px;
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(0, 229, 255, 0.04) 0%, transparent 65%);
+      filter: blur(90px);
+      border-radius: 50%;
+    }
+
+    .ambient-glow-3 {
+      position: absolute;
+      bottom: -150px;
+      left: -100px;
+      width: 700px;
+      height: 700px;
+      background: radial-gradient(circle, rgba(118, 185, 0, 0.04) 0%, transparent 60%);
+      filter: blur(100px);
+      border-radius: 50%;
+    }
+
+    .subtle-grid {
+      position: fixed;
+      inset: 0;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+      background-size: 64px 64px;
+      mask-image: radial-gradient(circle at 50% 30%, black 20%, transparent 80%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Container */
+    .container {
+      width: 100%;
+      max-width: 1240px;
       margin: 0 auto;
-      padding: 14px 24px;
+      padding: 0 24px;
+      position: relative;
+      z-index: 10;
+    }
+
+    /* ==========================================================================
+       DETACHED FLOATING ISLAND HEADER
+       ========================================================================== */
+    .header-anchor {
+      position: fixed;
+      top: 20px;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      display: flex;
+      justify-content: center;
+      padding: 0 16px;
+      pointer-events: none;
+    }
+
+    .floating-island {
+      pointer-events: auto;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
+      gap: 20px;
+      padding: 8px 12px 8px 18px;
+      border-radius: 9999px;
+      background: rgba(10, 14, 20, 0.75);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      box-shadow: 
+        0 20px 40px -10px rgba(0, 0, 0, 0.6),
+        inset 0 1px 1px rgba(255, 255, 255, 0.12);
+      transition: border-color 0.4s var(--ease-fluid), transform 0.4s var(--ease-fluid);
     }
-    .brand {
+
+    .floating-island:hover {
+      border-color: rgba(255, 255, 255, 0.18);
+    }
+
+    .brand-group {
       display: flex;
       align-items: center;
       gap: 12px;
-      font-weight: 800;
-      font-size: 1.15rem;
-      color: var(--text);
+      text-decoration: none;
+      color: var(--text-main);
     }
-    .brand img { width: 36px; height: 36px; border-radius: 8px; }
+
+    .brand-logo-frame {
+      width: 34px;
+      height: 34px;
+      border-radius: 9px;
+      background: #000;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    }
+
+    .brand-logo-frame img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .brand-text {
+      font-weight: 800;
+      font-size: 0.96rem;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-version-pill {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: rgba(0, 229, 255, 0.1);
+      border: 1px solid rgba(0, 229, 255, 0.28);
+      color: var(--accent-cyan);
+    }
+
     .nav-actions {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 8px;
     }
-    .lang-btn {
-      background: #1c2433;
-      color: var(--cyan);
-      border: 1px solid #2f3e56;
+
+    .island-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
       padding: 7px 14px;
-      border-radius: 8px;
-      font-weight: 700;
-      font-size: 0.88rem;
-      cursor: pointer;
-      transition: all 0.18s ease;
-    }
-    .lang-btn:hover {
-      background: #253146;
-      border-color: var(--cyan);
-    }
-    .gh-btn {
-      background: #212836;
-      color: var(--text);
-      border: 1px solid var(--card-border);
-      padding: 7px 14px;
-      border-radius: 8px;
+      border-radius: 9999px;
+      font-size: 0.82rem;
       font-weight: 600;
-      font-size: 0.88rem;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.3s var(--ease-fluid);
+      border: 1px solid transparent;
     }
-    .container {
-      max-width: 1140px;
-      margin: 0 auto;
-      padding: 0 24px;
+
+    .btn-lang {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-muted);
+      border-color: rgba(255, 255, 255, 0.08);
     }
-    .hero {
+
+    .btn-lang:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text-main);
+      border-color: rgba(255, 255, 255, 0.18);
+    }
+
+    .btn-github {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-main);
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .btn-github:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 16px rgba(0, 229, 255, 0.2);
+    }
+
+    /* ==========================================================================
+       HERO SECTION — Spatial Balance & Precision Typography
+       ========================================================================== */
+    .hero-section {
+      padding: 160px 0 90px;
       text-align: center;
-      padding: 72px 0 48px;
+      position: relative;
     }
-    .hero-logo {
-      width: 108px;
-      height: 108px;
-      margin-bottom: 20px;
-      filter: drop-shadow(0 0 28px rgba(0, 229, 255, 0.3));
-    }
-    .badges {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 10px;
-      margin-bottom: 20px;
-    }
-    .badge {
-      font-size: 0.78rem;
+
+    .eyebrow-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 14px;
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      font-size: 0.72rem;
       font-weight: 700;
-      padding: 5px 12px;
-      border-radius: 999px;
-      background: rgba(0, 229, 255, 0.1);
-      border: 1px solid rgba(0, 229, 255, 0.35);
-      color: var(--cyan);
-      letter-spacing: 0.3px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 28px;
     }
-    .badge.nv {
-      background: rgba(118, 185, 0, 0.14);
-      border-color: rgba(118, 185, 0, 0.45);
-      color: #9be52a;
+
+    .pulsing-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent-cyan);
+      box-shadow: 0 0 10px var(--accent-cyan);
+      animation: pulse-glow 2.4s infinite var(--ease-fluid);
     }
-    .badge.free {
-      background: rgba(0, 230, 118, 0.12);
-      border-color: rgba(0, 230, 118, 0.4);
-      color: var(--mint);
+
+    @keyframes pulse-glow {
+      0%, 100% { opacity: 0.5; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1.2); }
     }
-    h1 {
-      font-size: clamp(2.1rem, 4.5vw, 3.4rem);
+
+    .hero-title {
+      font-size: clamp(2.1rem, 5.5vw, 4.4rem);
       font-weight: 800;
-      letter-spacing: -0.02em;
-      margin-bottom: 16px;
-      background: linear-gradient(90deg, #ffffff 0%, #7be9ff 55%, #00e676 100%);
+      line-height: 1.1;
+      letter-spacing: -0.04em;
+      margin-bottom: 22px;
+      background: linear-gradient(180deg, #ffffff 10%, #d4e0eb 55%, #8ba3b8 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
+      max-width: 980px;
+      margin-left: auto;
+      margin-right: auto;
+      word-break: normal;
+      overflow-wrap: break-word;
     }
-    .subtitle {
-      font-size: 1.18rem;
-      color: var(--muted);
+
+    .hero-subtitle {
+      font-size: clamp(1.05rem, 2vw, 1.28rem);
+      font-weight: 400;
+      color: var(--text-muted);
+      line-height: 1.65;
       max-width: 780px;
-      margin: 0 auto 32px;
+      margin: 0 auto 38px;
     }
-    .cta-row {
+
+    .hero-subtitle strong {
+      color: #fff;
+      font-weight: 600;
+    }
+
+    /* Button-in-Button CTA Architecture */
+    .cta-cluster {
       display: flex;
       flex-wrap: wrap;
+      align-items: center;
       justify-content: center;
+      gap: 16px;
+      margin-bottom: 50px;
+    }
+
+    .btn-nested-primary {
+      display: inline-flex;
+      align-items: center;
       gap: 14px;
-      margin-bottom: 24px;
-    }
-    .btn-primary {
-      background: linear-gradient(135deg, #00e5ff 0%, #00b8d4 100%);
-      color: #061018;
-      font-weight: 800;
-      padding: 14px 28px;
-      border-radius: 10px;
-      font-size: 1.02rem;
-      box-shadow: 0 8px 28px rgba(0, 229, 255, 0.25);
-      transition: transform 0.15s ease;
-    }
-    .btn-primary:hover { transform: translateY(-2px); }
-    .btn-secondary {
-      background: #171f2e;
-      color: var(--text);
-      border: 1px solid #2d3b52;
+      padding: 10px 10px 10px 24px;
+      border-radius: 9999px;
+      background: linear-gradient(135deg, #00e5ff 0%, #00b0ff 100%);
+      color: #04090e;
       font-weight: 700;
-      padding: 14px 24px;
-      border-radius: 10px;
-      font-size: 1.02rem;
-      transition: border-color 0.15s ease;
+      font-size: 0.98rem;
+      text-decoration: none;
+      box-shadow: 
+        0 14px 34px -8px var(--accent-cyan-glow),
+        inset 0 1px 1px rgba(255, 255, 255, 0.6);
+      transition: transform 0.4s var(--ease-fluid), box-shadow 0.4s var(--ease-fluid);
+      border: 1px solid rgba(255, 255, 255, 0.4);
     }
-    .btn-secondary:hover { border-color: var(--mint); color: var(--mint); }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 20px;
-      margin: 44px 0;
+
+    .btn-nested-primary:hover {
+      transform: translateY(-2px) scale(1.01);
+      box-shadow: 
+        0 20px 40px -6px rgba(0, 229, 255, 0.42),
+        inset 0 1px 1px rgba(255, 255, 255, 0.8);
     }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--card-border);
-      border-radius: 14px;
+
+    .btn-nested-primary:active {
+      transform: translateY(1px) scale(0.99);
+    }
+
+    .btn-inner-circle {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: rgba(4, 9, 14, 0.18);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.4s var(--ease-fluid);
+    }
+
+    .btn-nested-primary:hover .btn-inner-circle {
+      transform: translateY(2px);
+    }
+
+    .btn-nested-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px 10px 22px;
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-main);
+      font-weight: 600;
+      font-size: 0.94rem;
+      text-decoration: none;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      transition: all 0.35s var(--ease-fluid);
+    }
+
+    .btn-nested-secondary:hover {
+      background: rgba(255, 255, 255, 0.09);
+      border-color: rgba(255, 255, 255, 0.22);
+      transform: translateY(-2px);
+    }
+
+    .btn-inner-circle-dim {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.06);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.35s var(--ease-fluid);
+    }
+
+    .btn-nested-secondary:hover .btn-inner-circle-dim {
+      transform: translateY(2px);
+    }
+
+    /* Key Value Badges Strip */
+    .specs-strip {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 10px;
+    }
+
+    .spec-pill {
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      font-weight: 500;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .spec-pill.nv {
+      border-color: rgba(118, 185, 0, 0.3);
+      background: rgba(118, 185, 0, 0.06);
+      color: #bbf451;
+    }
+
+    .spec-pill.cyan {
+      border-color: rgba(0, 229, 255, 0.3);
+      background: rgba(0, 229, 255, 0.06);
+      color: #7beeff;
+    }
+
+    /* ==========================================================================
+       ANTIGRAVITY SPATIAL HARDWARE RIG SHOWCASE (Interactive 3D Stage)
+       ========================================================================== */
+    .stage-wrapper {
+      padding: 30px 0 90px;
+      perspective: 1400px;
+    }
+
+    .spatial-rig {
+      position: relative;
+      width: 100%;
+      max-width: 1060px;
+      margin: 0 auto;
+      border-radius: 36px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 100%);
+      padding: 2px;
+      box-shadow: 
+        0 40px 80px -20px rgba(0, 0, 0, 0.8),
+        0 0 100px -30px rgba(0, 229, 255, 0.15);
+      transition: transform 0.6s var(--ease-fluid);
+      transform-style: preserve-3d;
+    }
+
+    .spatial-rig-inner {
+      border-radius: 34px;
+      background: radial-gradient(circle at 50% 0%, #101622 0%, #080b10 100%);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      padding: 36px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .rig-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 26px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .rig-status-group {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .rig-dot-live {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--accent-mint);
+      box-shadow: 0 0 12px var(--accent-mint);
+      animation: pulse-glow 2s infinite;
+    }
+
+    .rig-status-text {
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text-main);
+      letter-spacing: 0.02em;
+    }
+
+    .rig-outputs {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .rig-output-tag {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      color: var(--text-muted);
+    }
+
+    .rig-output-tag.active-nv {
+      background: rgba(118, 185, 0, 0.12);
+      border-color: rgba(118, 185, 0, 0.35);
+      color: #9ee628;
+    }
+
+    .rig-output-tag.active-obs {
+      background: rgba(0, 229, 255, 0.12);
+      border-color: rgba(0, 229, 255, 0.35);
+      color: #6ce5ff;
+    }
+
+    /* Interactive Viewfinder HUD */
+    .viewfinder-hud {
+      position: relative;
+      height: 380px;
+      border-radius: 24px;
+      background: #000;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.9);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
       padding: 24px;
+      user-select: none;
     }
-    .card h3 {
-      font-size: 1.14rem;
-      margin-bottom: 10px;
-      color: var(--cyan);
+
+    /* Simulated live sensor feed background with subtle depth grid */
+    .viewfinder-bg {
+      position: absolute;
+      inset: 0;
+      background: 
+        radial-gradient(circle at 50% 50%, rgba(20, 28, 42, 0.8) 0%, rgba(3, 4, 7, 0.95) 100%),
+        repeating-linear-gradient(45deg, rgba(255,255,255,0.01) 0, rgba(255,255,255,0.01) 2px, transparent 0, transparent 16px);
+      z-index: 1;
     }
-    .card p { color: var(--muted); font-size: 0.95rem; }
-    section { padding: 36px 0; }
-    h2 {
-      font-size: 1.85rem;
+
+    /* Reticle & Focus Brackets */
+    .viewfinder-reticle {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 140px;
+      height: 140px;
+      border: 1px solid rgba(0, 229, 255, 0.3);
+      border-radius: 12px;
+      z-index: 2;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .viewfinder-reticle::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-cyan);
+      box-shadow: 0 0 8px var(--accent-cyan);
+    }
+
+    .viewfinder-top {
+      position: relative;
+      z-index: 5;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .hud-metrics {
+      display: flex;
+      gap: 12px;
+    }
+
+    .hud-chip {
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      font-weight: 600;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(8px);
+      padding: 5px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #fff;
+    }
+
+    .hud-chip span {
+      color: var(--accent-cyan);
+      font-weight: 700;
+    }
+
+    /* Interactive Security Kill-Switch Button on Viewfinder */
+    .hud-killswitch {
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      font-weight: 700;
+      padding: 6px 14px;
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.3s var(--ease-fluid);
+      user-select: none;
+    }
+
+    .hud-killswitch.connected {
+      background: rgba(0, 230, 118, 0.14);
+      border: 1px solid rgba(0, 230, 118, 0.45);
+      color: #4ef598;
+    }
+
+    .hud-killswitch.connected:hover {
+      background: rgba(255, 71, 87, 0.15);
+      border-color: rgba(255, 71, 87, 0.5);
+      color: #ff6b7e;
+    }
+
+    .hud-killswitch.disconnected {
+      background: rgba(255, 71, 87, 0.2);
+      border: 1px solid rgba(255, 71, 87, 0.6);
+      color: #ff6b7e;
+    }
+
+    .viewfinder-bottom {
+      position: relative;
+      z-index: 5;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+
+    /* Lens selector bar */
+    .lens-selector {
+      display: flex;
+      gap: 6px;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(10px);
+      padding: 4px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .lens-pill {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      font-weight: 600;
+      padding: 5px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: all 0.25s var(--ease-fluid);
+    }
+
+    .lens-pill.active {
+      background: rgba(255, 255, 255, 0.16);
+      color: #fff;
+    }
+
+    .lens-pill:hover:not(.active) {
+      color: #fff;
+    }
+
+    .exposure-readout {
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      color: var(--text-muted);
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(8px);
+      padding: 5px 12px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* ==========================================================================
+       ASYMMETRICAL BENTO GRID — High-End Agency Architecture
+       ========================================================================== */
+    .section-spacing {
+      padding: 90px 0;
+    }
+
+    .section-eyebrow {
       text-align: center;
-      margin-bottom: 24px;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+      margin-bottom: 12px;
     }
+
+    .section-heading {
+      text-align: center;
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 18px;
+    }
+
+    .section-subheading {
+      text-align: center;
+      font-size: 1.1rem;
+      color: var(--text-muted);
+      max-width: 660px;
+      margin: 0 auto 54px;
+    }
+
+    /* The Bento Grid with Concentric Double-Bezel */
+    .bento-grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 20px;
+    }
+
+    .bento-card-outer {
+      position: relative;
+      border-radius: 28px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0.02) 100%);
+      padding: 1px;
+      transition: transform 0.4s var(--ease-fluid), box-shadow 0.4s var(--ease-fluid);
+    }
+
+    .has-reveal {
+      opacity: 0;
+      transform: translateY(22px);
+      transition: opacity 0.65s var(--ease-fluid), transform 0.65s var(--ease-fluid);
+    }
+
+    .has-reveal.is-revealed {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .bento-card-outer:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7);
+    }
+
+    .bento-card-inner {
+      border-radius: 27px;
+      background: var(--card-inner);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      padding: 34px;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.09);
+    }
+
+    .col-span-8 { grid-column: span 8; }
+    .col-span-4 { grid-column: span 4; }
+    .col-span-6 { grid-column: span 6; }
+    .col-span-12 { grid-column: span 12; }
+
+    .card-icon-frame {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 22px;
+      box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.1);
+    }
+
+    .card-title {
+      font-size: 1.28rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 12px;
+      color: var(--text-main);
+    }
+
+    .card-body {
+      color: #9cb0c4;
+      font-size: 0.98rem;
+      line-height: 1.68;
+    }
+
+    .card-body code {
+      font-family: var(--font-mono);
+      font-size: 0.86em;
+      padding: 2px 6px;
+      border-radius: 5px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--accent-cyan);
+    }
+
+    .card-footer-tag {
+      margin-top: 24px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      font-weight: 600;
+      color: var(--accent-cyan);
+    }
+
+    /* ==========================================================================
+       TECHNICAL COMPARISON MATRIX
+       ========================================================================== */
+    .table-container {
+      border-radius: 28px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0.02) 100%);
+      padding: 1px;
+      overflow: hidden;
+      box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.7);
+    }
+
+    .table-inner {
+      border-radius: 27px;
+      background: var(--card-inner);
+      backdrop-filter: blur(20px);
+      overflow-x: auto;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
-      background: var(--card);
-      border: 1px solid var(--card-border);
-      border-radius: 12px;
-      overflow: hidden;
-    }
-    th, td {
-      padding: 14px 18px;
       text-align: left;
-      border-bottom: 1px solid var(--card-border);
-      font-size: 0.95rem;
+      font-size: 0.94rem;
+      table-layout: fixed;
     }
+
+    th, td {
+      padding: 18px 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      vertical-align: middle;
+    }
+
     th {
-      background: #192130;
-      color: var(--cyan);
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
       font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      background: rgba(255, 255, 255, 0.02);
     }
-    td.good { color: var(--mint); font-weight: 600; }
-    td.bad { color: #ff6b6b; }
-    .steps {
+
+    th.col-highlight {
+      color: var(--accent-cyan);
+      background: rgba(0, 229, 255, 0.04);
+      border-left: 1px solid rgba(0, 229, 255, 0.15);
+      border-right: 1px solid rgba(0, 229, 255, 0.15);
+    }
+
+    td.col-highlight {
+      background: rgba(0, 229, 255, 0.02);
+      border-left: 1px solid rgba(0, 229, 255, 0.12);
+      border-right: 1px solid rgba(0, 229, 255, 0.12);
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .check-positive {
+      color: var(--accent-mint);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .check-negative {
+      color: #ff5252;
+      opacity: 0.85;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ==========================================================================
+       SETUP STEPS — Clean 3-Stage Blueprint
+       ========================================================================== */
+    .steps-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      grid-template-columns: repeat(3, 1fr);
       gap: 20px;
     }
-    .step-num {
-      display: inline-block;
-      background: rgba(0, 230, 118, 0.15);
-      color: var(--mint);
-      font-weight: 800;
-      padding: 3px 10px;
+
+    .step-card-outer {
+      border-radius: 26px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.01) 100%);
+      padding: 1px;
+    }
+
+    .step-card-inner {
+      border-radius: 25px;
+      background: var(--card-inner);
+      backdrop-filter: blur(16px);
+      padding: 32px 28px;
+      height: 100%;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .step-badge {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 4px 10px;
       border-radius: 6px;
-      font-size: 0.82rem;
-      margin-bottom: 10px;
+      background: rgba(0, 229, 255, 0.1);
+      border: 1px solid rgba(0, 229, 255, 0.25);
+      color: var(--accent-cyan);
+      margin-bottom: 20px;
+      display: inline-block;
     }
-    footer {
-      border-top: 1px solid var(--card-border);
-      margin-top: 64px;
-      padding: 32px 0;
+
+    .step-card-title {
+      font-size: 1.18rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+      letter-spacing: -0.02em;
+    }
+
+    .step-card-desc {
+      color: var(--text-muted);
+      font-size: 0.92rem;
+      line-height: 1.6;
+    }
+
+    /* ==========================================================================
+       FOOTER & DOWNLOAD BANNER
+       ========================================================================== */
+    .footer-cta-card {
+      border-radius: 36px;
+      background: linear-gradient(180deg, rgba(0, 229, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 100%);
+      padding: 1px;
+      margin: 80px 0 60px;
+    }
+
+    .footer-cta-inner {
+      border-radius: 35px;
+      background: radial-gradient(circle at 50% 0%, #121926 0%, #07090e 100%);
+      padding: 60px 30px;
       text-align: center;
-      color: var(--muted);
-      font-size: 0.9rem;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.15);
     }
-    [data-lang="pt"] { display: none; }
-    body.lang-pt [data-lang="en"] { display: none; }
-    body.lang-pt [data-lang="pt"] { display: revert; }
+
+    footer {
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      padding: 40px 0 60px;
+      text-align: center;
+      font-size: 0.88rem;
+      color: var(--text-dim);
+    }
+
+    /* Bilingual Switch Utility */
+    [data-lang="pt"] { display: none !important; }
+    body.lang-pt [data-lang="en"] { display: none !important; }
+    body.lang-pt [data-lang="pt"] { display: revert !important; }
+
+    /* ==========================================================================
+       RESPONSIVE COLLAPSE (Universal Fallback for <768px)
+       ========================================================================== */
+    @media (max-width: 900px) {
+      .bento-grid {
+        grid-template-columns: 1fr;
+      }
+      .col-span-8, .col-span-4, .col-span-6, .col-span-12 {
+        grid-column: span 1;
+      }
+      .steps-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .hero-section {
+        padding: 120px 0 50px;
+      }
+      .cta-cluster {
+        flex-direction: column;
+        width: 100%;
+      }
+      .btn-nested-primary, .btn-nested-secondary {
+        width: 100%;
+        justify-content: center;
+      }
+      .floating-island {
+        padding: 6px 12px;
+      }
+      .brand-text span {
+        display: none;
+      }
+      .spatial-rig-inner {
+        padding: 18px 12px;
+      }
+      .viewfinder-hud {
+        height: auto;
+        min-height: 380px;
+        padding: 14px;
+        gap: 16px;
+      }
+      .viewfinder-top {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+      }
+      .hud-metrics {
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .viewfinder-bottom {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+      }
+      .lens-selector {
+        flex-wrap: wrap;
+      }
+      .bento-card-inner {
+        padding: 24px;
+      }
+    }
+
+    /* Accessibility: Reduced Motion */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+      .spatial-rig {
+        transform: none !important;
+      }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <div class="nav">
-      <div class="brand">
-        <img src="cameraphone_logo.png" alt="CameraPhone Logo" />
-        <span>CameraPhone 4K Pro</span>
-      </div>
+
+  <!-- Atmospheric Background Canvas -->
+  <div class="ambient-canvas">
+    <div class="ambient-glow-1"></div>
+    <div class="ambient-glow-2"></div>
+    <div class="ambient-glow-3"></div>
+  </div>
+  <div class="subtle-grid"></div>
+
+  <!-- Detached Floating Island Header -->
+  <div class="header-anchor">
+    <header class="floating-island">
+      <a href="#" class="brand-group">
+        <div class="brand-logo-frame">
+          <img src="cameraphone_logo.png" alt="CameraPhone Logo" />
+        </div>
+        <div class="brand-text">
+          <span>CameraPhone</span>
+          <span class="brand-version-pill">v1.4.0</span>
+        </div>
+      </a>
       <div class="nav-actions">
-        <button id="langToggle" class="lang-btn" onclick="toggleLang()">🌐 Language: EN</button>
-        <a class="gh-btn" href="https://github.com/ViniciusCostaGrillo/cameraphone" target="_blank" rel="noopener">GitHub Repo ↗</a>
+        <button id="langToggleBtn" class="island-btn btn-lang" onclick="toggleLanguage()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          <span id="langLabel">Language: EN</span>
+        </button>
+        <a class="island-btn btn-github" href="https://github.com/ViniciusCostaGrillo/cameraphone" target="_blank" rel="noopener">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          <span>GitHub</span>
+        </a>
       </div>
-    </div>
-  </header>
+    </header>
+  </div>
 
   <main class="container">
-    <!-- HERO -->
-    <section class="hero">
-      <img class="hero-logo" src="cameraphone_logo.png" alt="CameraPhone 4K Pro" />
-      <div class="badges">
-        <span class="badge free" data-lang="en">100% FREE & OPEN-SOURCE</span>
-        <span class="badge free" data-lang="pt">100% GRATUITO & CÓDIGO ABERTO</span>
-        <span class="badge nv" data-lang="en">NVIDIA BROADCAST READY (USB & WI-FI)</span>
-        <span class="badge nv" data-lang="pt">PRONTO P/ NVIDIA BROADCAST (USB & WI-FI)</span>
-        <span class="badge">4K60 / 120 FPS • HEVC / AV1 • HDR10</span>
+    <!-- HERO SECTION -->
+    <section class="hero-section">
+      <div class="eyebrow-pill">
+        <span class="pulsing-dot"></span>
+        <span data-lang="en">Open-Source Studio Camera Pipeline</span>
+        <span data-lang="pt">Pipeline de Câmera de Estúdio Open-Source</span>
       </div>
 
-      <h1 data-lang="en">Turn Your Android Phone Into a 4K60 Studio Camera</h1>
-      <h1 data-lang="pt">Transforme seu Android em uma Câmera de Estúdio 4K60</h1>
+      <h1 class="hero-title" data-lang="en">
+        Turn Your Android Into a 4K60 Studio Camera
+      </h1>
+      <h1 class="hero-title" data-lang="pt">
+        Transforme seu Android em uma Câmera de Estúdio 4K60
+      </h1>
 
-      <p class="subtitle" data-lang="en">
-        Native DirectShow Virtual Camera for <strong>NVIDIA Broadcast</strong> and native 64-bit plugin for <strong>OBS Studio</strong>.
-        Works automatically over <strong>USB Cable</strong> and <strong>Wi-Fi</strong> with zero watermarks, zero subscriptions, and sub-frame latency.
+      <p class="hero-subtitle" data-lang="en">
+        Native DirectShow Virtual Camera for <strong>NVIDIA Broadcast</strong> and 64-bit plugin for <strong>OBS Studio</strong>.
+        Stream uncompressed 4K60 and 1080p120 with <strong>sub-frame latency</strong> over USB Cable or Wi-Fi — 100% Free, Zero Watermarks.
       </p>
-      <p class="subtitle" data-lang="pt">
-        Câmera Virtual DirectShow nativa para o <strong>NVIDIA Broadcast</strong> e plugin 64-bit nativo para o <strong>OBS Studio</strong>.
-        Funciona automaticamente via <strong>Cabo USB</strong> e <strong>Wi-Fi</strong> sem marca d'água, sem mensalidades e com latência ultrabaixa.
+      <p class="hero-subtitle" data-lang="pt">
+        Câmera Virtual DirectShow nativa para o <strong>NVIDIA Broadcast</strong> e plugin 64-bit para o <strong>OBS Studio</strong>.
+        Transmita 4K60 e 1080p120 com <strong>latência ultrabaixa</strong> via Cabo USB ou Wi-Fi — 100% Gratuito, Sem Marcas D'água.
       </p>
 
-      <div class="cta-row">
-        <a class="btn-primary" href="https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.4.0/CameraPhone-Setup.exe">
-          <span data-lang="en">⬇️ Download Windows Setup (v1.4.0)</span>
-          <span data-lang="pt">⬇️ Baixar Instalador Windows (v1.4.0)</span>
+      <div class="cta-cluster">
+        <a class="btn-nested-primary" href="https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.4.0/CameraPhone-Setup.exe">
+          <span data-lang="en">Download Windows Setup (v1.4.0)</span>
+          <span data-lang="pt">Baixar Instalador Windows (v1.4.0)</span>
+          <div class="btn-inner-circle">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+          </div>
         </a>
-        <a class="btn-secondary" href="https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.4.0/CameraPhone.apk">
-          <span data-lang="en">🤖 Download Android APK</span>
-          <span data-lang="pt">🤖 Baixar APK Android</span>
+
+        <a class="btn-nested-secondary" href="https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.4.0/CameraPhone.apk">
+          <span data-lang="en">Android APK</span>
+          <span data-lang="pt">APK Android</span>
+          <div class="btn-inner-circle-dim">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+          </div>
         </a>
-        <a class="btn-secondary" href="https://github.com/ViniciusCostaGrillo/cameraphone/releases/tag/v1.4.0">
-          <span data-lang="en">📦 All Release Binaries</span>
-          <span data-lang="pt">📦 Todos os Binários</span>
+
+        <a class="btn-nested-secondary" href="https://github.com/ViniciusCostaGrillo/cameraphone/releases/tag/v1.4.0">
+          <span data-lang="en">Release Assets</span>
+          <span data-lang="pt">Todos os Binários</span>
+          <div class="btn-inner-circle-dim">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          </div>
         </a>
       </div>
-    </section>
 
-    <!-- FEATURES -->
-    <section>
-      <div class="grid">
-        <div class="card">
-          <h3 data-lang="en">🟢 NVIDIA Broadcast (USB & Wi-Fi)</h3>
-          <h3 data-lang="pt">🟢 NVIDIA Broadcast (USB e Wi-Fi)</h3>
-          <p data-lang="en">
-            Registers <code>CameraPhone Virtual Camera</code> with native 4K NV12 DirectShow pins. Use AI Background Blur, Auto-Frame, and Eye Contact over USB cable or wireless Wi-Fi without needing OBS open.
-          </p>
-          <p data-lang="pt">
-            Registra a <code>CameraPhone Virtual Camera</code> com pinos DirectShow NV12 nativos até 4K. Use Desfoque de Fundo IA, Auto-Frame e Eye Contact via Cabo USB ou Wi-Fi sem precisar abrir o OBS.
-          </p>
+      <div class="specs-strip">
+        <div class="spec-pill nv">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8.5 4h7a4.5 4.5 0 0 1 4.5 4.5v7a4.5 4.5 0 0 1-4.5 4.5h-7A4.5 4.5 0 0 1 4 15.5v-7A4.5 4.5 0 0 1 8.5 4z"/></svg>
+          <span>NVIDIA Broadcast Ready (USB & Wi-Fi)</span>
         </div>
-
-        <div class="card">
-          <h3 data-lang="en">🎥 Native 4K60/120 & 10-Bit HDR</h3>
-          <h3 data-lang="pt">🎥 4K60/120 Nativo & HDR 10-Bit</h3>
-          <p data-lang="en">
-            Zero-copy Android <code>Camera2</code> + hardware <code>MediaCodec</code> (HEVC H.265, AV1, AVC) streaming up to 3840x2160 @ 60 FPS and 1080p @ 120 FPS with all physical lenses unlocked.
-          </p>
-          <p data-lang="pt">
-            Pipeline Zero-Copy <code>Camera2</code> + <code>MediaCodec</code> em hardware (HEVC H.265, AV1, AVC) transmitindo até 3840x2160 @ 60 FPS e 1080p @ 120 FPS com todas as lentes físicas liberadas.
-          </p>
+        <div class="spec-pill cyan">
+          <span>4K60 UHD / 1080p120</span>
         </div>
-
-        <div class="card">
-          <h3 data-lang="en">⚡ Zero-Config Auto-Connect</h3>
-          <h3 data-lang="pt">⚡ Conexão Automática Zero-Config</h3>
-          <p data-lang="en">
-            Plug in USB or open the app on the same Wi-Fi network — the PC companion automatically discovers your phone and starts feeding video immediately. No IP or PIN typing required on your home LAN.
-          </p>
-          <p data-lang="pt">
-            Conecte no USB ou abra o app na mesma rede Wi-Fi — o PC descobre o celular automaticamente e inicia o vídeo na hora, sem precisar digitar IP ou PIN na sua rede local.
-          </p>
+        <div class="spec-pill">
+          <span>HEVC (H.265) • AV1 • 10-Bit HDR</span>
         </div>
-
-        <div class="card">
-          <h3 data-lang="en">📐 Full OBS Studio Transforms</h3>
-          <h3 data-lang="pt">📐 Transformações Livres no OBS</h3>
-          <p data-lang="en">
-            Native 64-bit OBS plugin (<code>cameraphone.dll</code>) with dynamic bounding boxes, free red-handle resizing, <code>Alt</code>-drag cropping, Chroma Key, LUTs, and remote ISO/Zoom/WB sliders.
-          </p>
-          <p data-lang="pt">
-            Plugin OBS 64-bit nativo (<code>cameraphone.dll</code>) com redimensionamento livre pelas alças, recorte com <code>Alt</code>, máscaras, Chroma Key, LUTs e controle remoto de ISO/Zoom/WB.
-          </p>
+        <div class="spec-pill">
+          <span>Zero Watermarks • C++20 & Kotlin</span>
         </div>
       </div>
     </section>
 
-    <!-- QUICK START -->
-    <section>
-      <h2 data-lang="en">🚀 3-Step Quick Start</h2>
-      <h2 data-lang="pt">🚀 Como Usar em 3 Passos</h2>
-      <div class="steps">
-        <div class="card">
-          <span class="step-num">STEP 1</span>
-          <h3 data-lang="en">Run CameraPhone-Setup.exe</h3>
-          <h3 data-lang="pt">Execute o CameraPhone-Setup.exe</h3>
-          <p data-lang="en">Installs the companion app, registers the NVIDIA Broadcast Virtual Camera, and installs the native OBS Studio plugin in seconds.</p>
-          <p data-lang="pt">Instala o aplicativo no PC, registra a Câmera Virtual para o NVIDIA Broadcast e configura o plugin nativo no OBS Studio em segundos.</p>
-        </div>
-        <div class="card">
-          <span class="step-num">STEP 2</span>
-          <h3 data-lang="en">Click "2. Install APK on Phone"</h3>
-          <h3 data-lang="pt">Clique em "2. Install APK on Phone"</h3>
-          <p data-lang="en">Connect your phone via USB once with USB Debugging enabled and click button 2. It installs the APK, grants permissions, and caches your Wi-Fi IP automatically.</p>
-          <p data-lang="pt">Conecte o celular via USB uma vez com Depuração USB ativa e clique no botão 2. Ele instala o APK, concede permissões e salva o IP Wi-Fi automaticamente.</p>
-        </div>
-        <div class="card">
-          <span class="step-num">STEP 3</span>
-          <h3 data-lang="en">Select in NVIDIA Broadcast or OBS</h3>
-          <h3 data-lang="pt">Selecione no NVIDIA Broadcast ou OBS</h3>
-          <p data-lang="en">Choose <strong>CameraPhone Virtual Camera</strong> in NVIDIA Broadcast / Discord, or add <strong>CameraPhone 4K Pro</strong> in OBS Studio — via USB Cable or Wi-Fi!</p>
-          <p data-lang="pt">Selecione <strong>CameraPhone Virtual Camera</strong> no NVIDIA Broadcast / Discord, ou adicione <strong>CameraPhone 4K Pro</strong> no OBS Studio — por Cabo USB ou Wi-Fi!</p>
+    <!-- SPATIAL HARDWARE RIG SHOWCASE -->
+    <section class="stage-wrapper">
+      <div id="spatialRig" class="spatial-rig">
+        <div class="spatial-rig-inner">
+          <div class="rig-header">
+            <div class="rig-status-group">
+              <div id="liveDot" class="rig-dot-live"></div>
+              <div id="liveStatusText" class="rig-status-text">
+                <span data-lang="en">LIVE HARDWARE ENCODER: HEVC 10-BIT • 4K UHD</span>
+                <span data-lang="pt">ENCODER HARDWARE ATIVO: HEVC 10-BIT • 4K UHD</span>
+              </div>
+            </div>
+            <div class="rig-outputs">
+              <div class="rig-output-tag active-nv">NVIDIA Broadcast</div>
+              <div class="rig-output-tag active-obs">OBS Studio 64-bit</div>
+            </div>
+          </div>
+
+          <div class="viewfinder-hud">
+            <div class="viewfinder-bg"></div>
+            <div class="viewfinder-reticle"></div>
+
+            <div class="viewfinder-top">
+              <div class="hud-metrics">
+                <div class="hud-chip">RES: <span>3840x2160</span></div>
+                <div class="hud-chip">FPS: <span id="fpsCounter">60.0</span></div>
+                <div class="hud-chip">RATE: <span id="rateCounter">42.8 Mbps</span></div>
+              </div>
+
+              <!-- Interactive Kill-Switch Toggle Demo -->
+              <div id="killSwitchDemo" class="hud-killswitch connected" onclick="toggleKillSwitchDemo()">
+                <span id="killSwitchDot" style="width: 8px; height: 8px; border-radius: 50%; background: #00e676;"></span>
+                <span id="killSwitchText" data-lang="en">CONNECTED (KILL-SWITCH READY)</span>
+                <span id="killSwitchTextPt" data-lang="pt" style="display:none;">CONECTADO (KILL-SWITCH PRONTO)</span>
+              </div>
+            </div>
+
+            <div class="viewfinder-bottom">
+              <div class="lens-selector">
+                <button class="lens-pill" onclick="selectLens(this, '0.5x')">0.5x Ultra</button>
+                <button class="lens-pill active" onclick="selectLens(this, '1.0x')">1x Main (24mm)</button>
+                <button class="lens-pill" onclick="selectLens(this, '3.0x')">3x Tele</button>
+                <button class="lens-pill" onclick="selectLens(this, 'Front')">Front Selfie</button>
+              </div>
+
+              <div class="exposure-readout">
+                ISO <span>160</span> • 1/120s • WB 5400K • HDR10
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
 
-    <!-- COMPARISON TABLE -->
-    <section>
-      <h2 data-lang="en">⚡ Why Switch to CameraPhone 4K Pro?</h2>
-      <h2 data-lang="pt">⚡ Comparativo com Soluções Tradicionais</h2>
-      <table>
-        <thead>
-          <tr>
-            <th data-lang="en">Feature</th>
-            <th data-lang="pt">Recurso</th>
-            <th data-lang="en">Legacy Paid Apps (DroidCam / EpocCam)</th>
-            <th data-lang="pt">Apps Tradicionais (DroidCam / EpocCam)</th>
-            <th>CameraPhone 4K Pro</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td data-lang="en">4K UHD (3840x2160) & 60/120 FPS</td>
-            <td data-lang="pt">4K UHD (3840x2160) e 60/120 FPS</td>
-            <td class="bad" data-lang="en">Locked behind paid subscription</td>
-            <td class="bad" data-lang="pt">Bloqueado em assinatura paga</td>
-            <td class="good" data-lang="en">100% Free & Unlocked</td>
-            <td class="good" data-lang="pt">100% Gratuito e Liberado</td>
-          </tr>
-          <tr>
-            <td data-lang="en">NVIDIA Broadcast (USB & Wi-Fi)</td>
-            <td data-lang="pt">NVIDIA Broadcast (USB e Wi-Fi)</td>
-            <td class="bad" data-lang="en">Crashes on 4K or unsupported</td>
-            <td class="bad" data-lang="pt">Incompatível ou trava em 4K</td>
-            <td class="good" data-lang="en">Native DirectShow NV12 Virtual Camera</td>
-            <td class="good" data-lang="pt">Câmera Virtual DirectShow NV12 Nativa</td>
-          </tr>
-          <tr>
-            <td data-lang="en">Hardware Codecs</td>
-            <td data-lang="pt">Codecs de Hardware</td>
-            <td class="bad">MJPEG / H.264 (8-bit)</td>
-            <td class="good">HEVC (H.265), AV1 & H.264 + 10-bit HDR</td>
-          </tr>
-          <tr>
-            <td data-lang="en">All Physical Lenses & Manual ISO/Zoom</td>
-            <td data-lang="pt">Todas as Lentes Físicas e ISO/Zoom Manual</td>
-            <td class="bad" data-lang="en">Paid Pro only (HTTP 550)</td>
-            <td class="bad" data-lang="pt">Apenas versão paga (HTTP 550)</td>
-            <td class="good" data-lang="en">Ultra-Wide, Wide, Telephoto & Front Unlocked</td>
-            <td class="good" data-lang="pt">Ultra-Wide, Wide, Telefoto e Frontal Liberadas</td>
-          </tr>
-          <tr>
-            <td data-lang="en">Watermarks</td>
-            <td data-lang="pt">Marca D'água</td>
-            <td class="bad" data-lang="en">Injected into video stream</td>
-            <td class="bad" data-lang="pt">Injetada no vídeo</td>
-            <td class="good" data-lang="en">Zero Watermarks Forever</td>
-            <td class="good" data-lang="pt">Zero Marca D'água</td>
-          </tr>
-        </tbody>
-      </table>
+    <!-- ASYMMETRICAL BENTO GRID (Core Architecture) -->
+    <section class="section-spacing">
+      <div class="section-eyebrow" data-lang="en">Engineered for Creators & Pros</div>
+      <div class="section-eyebrow" data-lang="pt">Desenvolvido para Criadores e Profissionais</div>
+
+      <h2 class="section-heading" data-lang="en">Why Settle for Legacy Webcam Apps?</h2>
+      <h2 class="section-heading" data-lang="pt">Por Que Abandonar os Apps Antigos?</h2>
+
+      <p class="section-subheading" data-lang="en">
+        Traditional solutions lock 4K behind monthly paywalls, inject watermarks, and crash NVIDIA Broadcast. CameraPhone 4K Pro changes the game completely.
+      </p>
+      <p class="section-subheading" data-lang="pt">
+        Soluções antigas cobram mensalidade por 4K, colocam marcas d'água e travam no NVIDIA Broadcast. O CameraPhone 4K Pro redefine o padrão.
+      </p>
+
+      <div class="bento-grid">
+        <!-- BENTO 1: NVIDIA Broadcast (Large 8-col) -->
+        <div class="bento-card-outer col-span-8">
+          <div class="bento-card-inner">
+            <div>
+              <div class="card-icon-frame">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#76b900" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+              </div>
+              <h3 class="card-title" data-lang="en">Native NVIDIA Broadcast (USB & Wi-Fi)</h3>
+              <h3 class="card-title" data-lang="pt">NVIDIA Broadcast Nativo (USB e Wi-Fi)</h3>
+              <p class="card-body" data-lang="en">
+                Includes <code>CameraPhone Virtual Camera</code>, a DirectShow driver written from scratch in modern C++ with native 4K NV12 media pins. Use NVIDIA's AI Background Blur, Auto-Frame, and Eye Contact over USB cable or wireless Wi-Fi without needing OBS open.
+              </p>
+              <p class="card-body" data-lang="pt">
+                Inclui o driver DirectShow <code>CameraPhone Virtual Camera</code> com pinos nativos NV12 até 4K. Use Desfoque de Fundo por IA, Auto-Frame e Contato Visual no NVIDIA Broadcast via Cabo USB ou Wi-Fi sem precisar abrir o OBS.
+              </p>
+            </div>
+            <div class="card-footer-tag">
+              <span>DirectShow Capture Category • Zero-Copy Shared Memory</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- BENTO 2: 4K60 & Codecs (4-col) -->
+        <div class="bento-card-outer col-span-4">
+          <div class="bento-card-inner">
+            <div>
+              <div class="card-icon-frame">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00e5ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+              </div>
+              <h3 class="card-title" data-lang="en">True 4K60 & 10-Bit HDR</h3>
+              <h3 class="card-title" data-lang="pt">4K60 Real e HDR 10-Bit</h3>
+              <p class="card-body" data-lang="en">
+                Zero-copy Android <code>Camera2</code> + hardware <code>MediaCodec</code> pipeline. Supports HEVC (H.265), AV1, and AVC at up to 60 Mbps for pristine broadcast clarity.
+              </p>
+              <p class="card-body" data-lang="pt">
+                Pipeline zero-copy com <code>Camera2</code> + <code>MediaCodec</code> em hardware. Suporta HEVC (H.265), AV1 e AVC até 60 Mbps com nitidez cristalina.
+              </p>
+            </div>
+            <div class="card-footer-tag">
+              <span>HEVC / AV1 / H.264 • HDR10</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- BENTO 3: OBS Studio 64-bit Plugin (4-col) -->
+        <div class="bento-card-outer col-span-4">
+          <div class="bento-card-inner">
+            <div>
+              <div class="card-icon-frame">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00e676" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+              </div>
+              <h3 class="card-title" data-lang="en">Native OBS Studio Plugin</h3>
+              <h3 class="card-title" data-lang="pt">Plugin Nativo do OBS Studio</h3>
+              <p class="card-body" data-lang="en">
+                A dedicated 64-bit C++ OBS plugin (<code>cameraphone.dll</code>). Provides free red-handle resizing, <code>Alt</code>-drag cropping, Chroma Key, color LUTs, and studio tally lights right inside OBS.
+              </p>
+              <p class="card-body" data-lang="pt">
+                Plugin C++ 64-bit dedicado (<code>cameraphone.dll</code>). Permite redimensionar livremente pelas alças vermelhas, recortar com <code>Alt</code>, Chroma Key, LUTs de cor e luz de Tally no OBS.
+              </p>
+            </div>
+            <div class="card-footer-tag">
+              <span>Full OBS Transforms & Bounding Boxes</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- BENTO 4: Dual Zero-Config (4-col) -->
+        <div class="bento-card-outer col-span-4">
+          <div class="bento-card-inner">
+            <div>
+              <div class="card-icon-frame">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00e5ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+              </div>
+              <h3 class="card-title" data-lang="en">Dual Zero-Config Auto-Connect</h3>
+              <h3 class="card-title" data-lang="pt">Conexão Automática Zero-Config</h3>
+              <p class="card-body" data-lang="en">
+                Plug in USB for instant zero-latency tethering, or switch to Wi-Fi. The PC companion discovers your phone automatically via UDP beacons — no IP or PIN typing required on your home LAN.
+              </p>
+              <p class="card-body" data-lang="pt">
+                Conecte no cabo USB para latência zero instantânea, ou use Wi-Fi. O PC descobre seu celular automaticamente via beacon UDP — sem precisar digitar IP ou PIN na sua rede local.
+              </p>
+            </div>
+            <div class="card-footer-tag">
+              <span>USB ADB Tunnel + UDP Auto-Beacon</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- BENTO 5: 3-Layer Security Kill-Switch (4-col) -->
+        <div class="bento-card-outer col-span-4">
+          <div class="bento-card-inner">
+            <div>
+              <div class="card-icon-frame">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ff4757" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              </div>
+              <h3 class="card-title" data-lang="en">3-Layer Security Kill-Switch</h3>
+              <h3 class="card-title" data-lang="pt">Kill-Switch de Segurança 3 Camadas</h3>
+              <p class="card-body" data-lang="en">
+                Total privacy control with one tap. Executes a complete hardware blackout (releasing camera sensor & mic to Android OS), network blackout (socket cut + HTTP 403), and zero-trust PIN rotation.
+              </p>
+              <p class="card-body" data-lang="pt">
+                Privacidade total com um toque. Desliga o hardware (libera câmera e microfone para o Android), corta a rede (socket encerrado + HTTP 403) e rotaciona o PIN com segurança zero-trust.
+              </p>
+            </div>
+            <div class="card-footer-tag">
+              <span style="color: #ff6b7e;">Hardware & Network Blackout</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
+
+    <!-- TECHNICAL COMPARISON MATRIX -->
+    <section class="section-spacing">
+      <div class="section-eyebrow" data-lang="en">Objective Technical Comparison</div>
+      <div class="section-eyebrow" data-lang="pt">Comparativo Técnico Objetivo</div>
+
+      <h2 class="section-heading" data-lang="en">Engineered Without Compromise</h2>
+      <h2 class="section-heading" data-lang="pt">Desenvolvido Sem Concessões</h2>
+
+      <p class="section-subheading" data-lang="en">
+        See how CameraPhone 4K Pro compares to commercial legacy solutions like DroidCam, EpocCam, and Iriun.
+      </p>
+      <p class="section-subheading" data-lang="pt">
+        Veja como o CameraPhone 4K Pro se compara às soluções comerciais antigas como DroidCam, EpocCam e Iriun.
+      </p>
+
+      <div class="table-container">
+        <div class="table-inner">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 28%;">
+                  <span data-lang="en">Feature / Capability</span>
+                  <span data-lang="pt">Recurso / Capacidade</span>
+                </th>
+                <th style="width: 36%;">
+                  <span data-lang="en">Legacy Paid Apps (DroidCam / EpocCam)</span>
+                  <span data-lang="pt">Apps Antigos Pagos (DroidCam / EpocCam)</span>
+                </th>
+                <th class="col-highlight" style="width: 36%;">
+                  <span>CameraPhone 4K Pro</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <span data-lang="en">4K UHD (3840x2160) @ 60 FPS</span>
+                  <span data-lang="pt">4K UHD (3840x2160) a 60 FPS</span>
+                </td>
+                <td class="check-negative">
+                  <span data-lang="en">✕ Locked behind monthly subscription</span>
+                  <span data-lang="pt">✕ Bloqueado em assinatura paga</span>
+                </td>
+                <td class="col-highlight check-positive">
+                  <span data-lang="en">✓ 100% Free & Unlocked</span>
+                  <span data-lang="pt">✓ 100% Gratuito e Liberado</span>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <span data-lang="en">NVIDIA Broadcast Compatibility</span>
+                  <span data-lang="pt">Compatibilidade NVIDIA Broadcast</span>
+                </td>
+                <td class="check-negative">
+                  <span data-lang="en">✕ Freezes or crashes on 4K resolution</span>
+                  <span data-lang="pt">✕ Trava ou fecha em resolução 4K</span>
+                </td>
+                <td class="col-highlight check-positive">
+                  <span data-lang="en">✓ Native DirectShow NV12 (USB & Wi-Fi)</span>
+                  <span data-lang="pt">✓ DirectShow NV12 Nativo (USB e Wi-Fi)</span>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <span data-lang="en">Hardware Codecs</span>
+                  <span data-lang="pt">Codecs de Hardware</span>
+                </td>
+                <td class="check-negative">
+                  <span>✕ MJPEG / Standard H.264 (8-bit)</span>
+                </td>
+                <td class="col-highlight check-positive">
+                  <span>✓ HEVC (H.265) • AV1 • 10-bit HDR</span>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <span data-lang="en">OBS Studio Transforms & Crop</span>
+                  <span data-lang="pt">Transformações e Recorte no OBS</span>
+                </td>
+                <td class="check-negative">
+                  <span data-lang="en">✕ Clunky window captures or fixed crops</span>
+                  <span data-lang="pt">✕ Captura de janela sem recorte livre</span>
+                </td>
+                <td class="col-highlight check-positive">
+                  <span data-lang="en">✓ Native 64-bit plugin (Alt-drag, Handles, LUTs)</span>
+                  <span data-lang="pt">✓ Plugin 64-bit nativo (Alt-recorte, Alças, LUTs)</span>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <span data-lang="en">Watermarks & Advertisements</span>
+                  <span data-lang="pt">Marcas D'água e Anúncios</span>
+                </td>
+                <td class="check-negative">
+                  <span data-lang="en">✕ Injected video logos unless paid</span>
+                  <span data-lang="pt">✕ Logo injetada no vídeo a menos que pague</span>
+                </td>
+                <td class="col-highlight check-positive">
+                  <span data-lang="en">✓ Zero Watermarks Forever</span>
+                  <span data-lang="pt">✓ Zero Marca D'água para Sempre</span>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <span data-lang="en">Multi-Lens (Ultra-Wide, Telephoto, Front)</span>
+                  <span data-lang="pt">Múltiplas Lentes (Ultra-Wide, Tele, Frontal)</span>
+                </td>
+                <td class="check-negative">
+                  <span data-lang="en">✕ Locked or HTTP 550 error</span>
+                  <span data-lang="pt">✕ Bloqueado ou erro HTTP 550</span>
+                </td>
+                <td class="col-highlight check-positive">
+                  <span data-lang="en">✓ All Physical Camera2 Lenses Unlocked</span>
+                  <span data-lang="pt">✓ Todas as Lentes Camera2 Liberadas</span>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <span data-lang="en">Source Code & Privacy</span>
+                  <span data-lang="pt">Código Fonte e Privacidade</span>
+                </td>
+                <td class="check-negative">
+                  <span data-lang="en">✕ Closed-source proprietary binaries</span>
+                  <span data-lang="pt">✕ Binários fechados e proprietários</span>
+                </td>
+                <td class="col-highlight check-positive">
+                  <span data-lang="en">✓ 100% Open-Source (C++20 & Kotlin)</span>
+                  <span data-lang="pt">✓ 100% Código Aberto (C++20 & Kotlin)</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3-STEP QUICK SETUP GUIDE -->
+    <section class="section-spacing">
+      <div class="section-eyebrow" data-lang="en">Zero Setup Friction</div>
+      <div class="section-eyebrow" data-lang="pt">Instalação Sem Complicação</div>
+
+      <h2 class="section-heading" data-lang="en">Up and Running in 60 Seconds</h2>
+      <h2 class="section-heading" data-lang="pt">Pronto em 60 Segundos</h2>
+
+      <p class="section-subheading" data-lang="en">
+        No accounts, no cloud setup, and no driver headaches. Everything is self-contained.
+      </p>
+      <p class="section-subheading" data-lang="pt">
+        Sem contas, sem nuvem e sem dor de cabeça com drivers. Tudo pronto e automático.
+      </p>
+
+      <div class="steps-grid">
+        <div class="step-card-outer">
+          <div class="step-card-inner">
+            <span class="step-badge">STEP 01</span>
+            <h3 class="step-card-title" data-lang="en">Run CameraPhone-Setup.exe</h3>
+            <h3 class="step-card-title" data-lang="pt">Execute o Instalador Windows</h3>
+            <p class="step-card-desc" data-lang="en">
+              Installs the Windows companion app, registers the DirectShow Virtual Camera for NVIDIA Broadcast, and provisions the native OBS Studio 64-bit plugin.
+            </p>
+            <p class="step-card-desc" data-lang="pt">
+              Instala o aplicativo no Windows, registra a Câmera Virtual para o NVIDIA Broadcast e instala o plugin 64-bit nativo no OBS Studio.
+            </p>
+          </div>
+        </div>
+
+        <div class="step-card-outer">
+          <div class="step-card-inner">
+            <span class="step-badge">STEP 02</span>
+            <h3 class="step-card-title" data-lang="en">Click "2. Install APK on Phone"</h3>
+            <h3 class="step-card-title" data-lang="pt">Clique em "2. Install APK on Phone"</h3>
+            <p class="step-card-desc" data-lang="en">
+              Plug your phone in via USB once with USB Debugging enabled. The PC companion installs the APK, grants camera permissions, and caches your Wi-Fi IP automatically.
+            </p>
+            <p class="step-card-desc" data-lang="pt">
+              Conecte o celular via USB uma vez com Depuração USB ativa. O PC instala o APK, concede permissões de câmera e salva o IP Wi-Fi automaticamente.
+            </p>
+          </div>
+        </div>
+
+        <div class="step-card-outer">
+          <div class="step-card-inner">
+            <span class="step-badge">STEP 03</span>
+            <h3 class="step-card-title" data-lang="en">Select in NVIDIA Broadcast or OBS</h3>
+            <h3 class="step-card-title" data-lang="pt">Selecione no NVIDIA Broadcast ou OBS</h3>
+            <p class="step-card-desc" data-lang="en">
+              Choose <strong>CameraPhone Virtual Camera</strong> in NVIDIA Broadcast / Discord, or add <strong>CameraPhone 4K Pro</strong> in OBS Studio. Works via USB Cable or Wi-Fi!
+            </p>
+            <p class="step-card-desc" data-lang="pt">
+              Escolha <strong>CameraPhone Virtual Camera</strong> no NVIDIA Broadcast / Discord, ou adicione <strong>CameraPhone 4K Pro</strong> no OBS Studio. Funciona via USB ou Wi-Fi!
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FOOTER DOWNLOAD CALLOUT -->
+    <div class="footer-cta-card">
+      <div class="footer-cta-inner">
+        <h2 style="font-size: clamp(1.8rem, 3.5vw, 2.6rem); font-weight: 800; letter-spacing: -0.03em; margin-bottom: 14px;" data-lang="en">
+          Elevate Your Studio Camera Today
+        </h2>
+        <h2 style="font-size: clamp(1.8rem, 3.5vw, 2.6rem); font-weight: 800; letter-spacing: -0.03em; margin-bottom: 14px;" data-lang="pt">
+          Eleve a Qualidade do Seu Estúdio Hoje
+        </h2>
+
+        <p style="color: var(--text-muted); font-size: 1.05rem; max-width: 600px; margin: 0 auto 32px;" data-lang="en">
+          Join streamers and professionals who have unlocked the full 4K sensor power of their phones without paywalls.
+        </p>
+        <p style="color: var(--text-muted); font-size: 1.05rem; max-width: 600px; margin: 0 auto 32px;" data-lang="pt">
+          Junte-se a streamers e criadores que liberaram o poder do sensor 4K do celular sem mensalidades.
+        </p>
+
+        <div class="cta-cluster" style="margin-bottom: 0;">
+          <a class="btn-nested-primary" href="https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.4.0/CameraPhone-Setup.exe">
+            <span data-lang="en">Download Windows Setup (v1.4.0)</span>
+            <span data-lang="pt">Baixar Instalador Windows (v1.4.0)</span>
+            <div class="btn-inner-circle">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+            </div>
+          </a>
+
+          <a class="btn-nested-secondary" href="https://github.com/ViniciusCostaGrillo/cameraphone" target="_blank" rel="noopener">
+            <span>Explore Source on GitHub ↗</span>
+          </a>
+        </div>
+      </div>
+    </div>
   </main>
 
   <footer>
     <div class="container">
-      <p data-lang="en">CameraPhone 4K Pro — Open-Source Studio Camera Pipeline (C++20 & Kotlin) • English & Portuguese UI</p>
-      <p data-lang="pt">CameraPhone 4K Pro — Pipeline de Câmera de Estúdio Open-Source (C++20 & Kotlin) • Interface em Inglês e Português</p>
+      <p style="margin-bottom: 8px;">
+        CameraPhone 4K Pro — Open-Source Modern Studio Camera Pipeline (C++20 & Kotlin)
+      </p>
+      <p style="color: var(--text-dim); font-size: 0.8rem;">
+        Engineered for NVIDIA Broadcast, OBS Studio, Discord & Zoom • English & Portuguese UI
+      </p>
     </div>
   </footer>
 
+  <!-- ==========================================================================
+       INTERACTIVE MOTION & ANTIGRAVITY ENGINE SCRIPT
+       ========================================================================== -->
   <script>
-    function toggleLang() {
+    // 1. Language Toggle Mechanism (English Default with PT-BR Switch)
+    let currentLang = 'en';
+    function toggleLanguage() {
       const isPt = document.body.classList.toggle('lang-pt');
-      document.getElementById('langToggle').textContent = isPt ? '🌐 Language: PT-BR' : '🌐 Language: EN';
+      currentLang = isPt ? 'pt' : 'en';
+      document.getElementById('langLabel').textContent = isPt ? 'Idioma: PT-BR' : 'Language: EN';
       document.documentElement.lang = isPt ? 'pt-BR' : 'en';
+      
+      const ksEn = document.getElementById('killSwitchText');
+      const ksPt = document.getElementById('killSwitchTextPt');
+      if (ksEn && ksPt) {
+        ksEn.style.display = isPt ? 'none' : 'inline';
+        ksPt.style.display = isPt ? 'inline' : 'none';
+      }
     }
+
+    // 2. Interactive Kill-Switch Demo in Viewfinder HUD
+    let isKillSwitchArmed = true;
+    function toggleKillSwitchDemo() {
+      isKillSwitchArmed = !isKillSwitchArmed;
+      const ksBtn = document.getElementById('killSwitchDemo');
+      const ksDot = document.getElementById('killSwitchDot');
+      const liveDot = document.getElementById('liveDot');
+      const fps = document.getElementById('fpsCounter');
+      const rate = document.getElementById('rateCounter');
+      const ksEn = document.getElementById('killSwitchText');
+      const ksPt = document.getElementById('killSwitchTextPt');
+
+      if (isKillSwitchArmed) {
+        ksBtn.className = 'hud-killswitch connected';
+        ksDot.style.background = '#00e676';
+        liveDot.style.background = '#00e676';
+        liveDot.style.boxShadow = '0 0 12px #00e676';
+        fps.textContent = '60.0';
+        rate.textContent = '42.8 Mbps';
+        ksEn.textContent = 'CONNECTED (KILL-SWITCH READY)';
+        ksPt.textContent = 'CONECTADO (KILL-SWITCH PRONTO)';
+      } else {
+        ksBtn.className = 'hud-killswitch disconnected';
+        ksDot.style.background = '#ff4757';
+        liveDot.style.background = '#ff4757';
+        liveDot.style.boxShadow = '0 0 12px #ff4757';
+        fps.textContent = '0.0';
+        rate.textContent = '0.0 Mbps (BLACKOUT)';
+        ksEn.textContent = '🛑 DISCONNECTED (HARDWARE OFF)';
+        ksPt.textContent = '🛑 DESCONECTADO (HARDWARE OFF)';
+      }
+    }
+
+    // 3. Interactive Lens Switcher Demo
+    function selectLens(button, lensName) {
+      document.querySelectorAll('.lens-pill').forEach(b => b.classList.remove('active'));
+      button.classList.add('active');
+    }
+
+    // 4. Antigravity 3D Spatial Tilt Physics on Mouse Move
+    const rig = document.getElementById('spatialRig');
+    if (rig && window.matchMedia('(prefers-reduced-motion: no-preference)').matches) {
+      document.addEventListener('mousemove', (e) => {
+        const rect = rig.getBoundingClientRect();
+        const rigCenterX = rect.left + rect.width / 2;
+        const rigCenterY = rect.top + rect.height / 2;
+        
+        const deltaX = (e.clientX - rigCenterX) / (window.innerWidth / 2);
+        const deltaY = (e.clientY - rigCenterY) / (window.innerHeight / 2);
+        
+        // Soft, high-end damped 3D tilt
+        const rotX = -deltaY * 5;
+        const rotY = deltaX * 7;
+        
+        rig.style.transform = `perspective(1400px) rotateX(${rotX.toFixed(2)}deg) rotateY(${rotY.toFixed(2)}deg) translateZ(10px)`;
+      });
+
+      document.addEventListener('mouseleave', () => {
+        rig.style.transform = 'perspective(1400px) rotateX(0deg) rotateY(0deg) translateZ(0px)';
+      });
+    }
+
+    // 5. Staggered Scroll Entrances via IntersectionObserver
+    const revealCards = document.querySelectorAll('.bento-card-outer, .step-card-outer');
+    if ('IntersectionObserver' in window && window.matchMedia('(prefers-reduced-motion: no-preference)').matches) {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-revealed');
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.05, rootMargin: '0px 0px 100px 0px' });
+
+      revealCards.forEach(card => {
+        card.classList.add('has-reveal');
+        observer.observe(card);
+      });
+    }
+
+    // Subtle random jitter for FPS and Bitrate in the demo HUD
+    setInterval(() => {
+      if (isKillSwitchArmed) {
+        const fps = document.getElementById('fpsCounter');
+        const rate = document.getElementById('rateCounter');
+        if (fps && rate) {
+          fps.textContent = (59.8 + Math.random() * 0.4).toFixed(1);
+          rate.textContent = (41.5 + Math.random() * 2.2).toFixed(1) + ' Mbps';
+        }
+      }
+    }, 1800);
   </script>
 </body>
 </html>
