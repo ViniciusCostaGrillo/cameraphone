@@ -14,6 +14,7 @@
 [![Android](https://img.shields.io/badge/Android-9.0%2B_(API_28--36)-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.4.0/CameraPhone.apk)
 [![C++20](https://img.shields.io/badge/C%2B%2B-20_Native-00599C?style=for-the-badge&logo=cplusplus&logoColor=white)](obs-plugin/)
 [![Kotlin](https://img.shields.io/badge/Kotlin-Camera2_%2B_MediaCodec-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)](android-app/)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Apoie_o_projeto-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/viniciuscostagrillo)
 
 ### 🌐 [**Live Project Website**](https://viniciuscostagrillo.github.io/cameraphone/) • [🇺🇸 **English Documentation**](#-cameraphone-4k-pro--english) • [🇧🇷 **Documentação em Português**](#-cameraphone-4k-pro--português-brasil)
 
