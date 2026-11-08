@@ -80,7 +80,15 @@ class SecurityGate(
                           remoteIp == "0:0:0:0:0:0:0:1" ||
                           remoteIp.startsWith("127.") ||
                           remoteIp.endsWith(":127.0.0.1"))
-        if (isLoopback && candidate == "usb-zero-config") {
+        val isPrivateLan = isLoopback ||
+                           remoteIp.startsWith("192.168.") ||
+                           remoteIp.startsWith("10.") ||
+                           remoteIp.startsWith("169.254.") ||
+                           remoteIp.matches(Regex("^172\\.(1[6-9]|2[0-9]|3[0-1])\\..*")) ||
+                           remoteIp.startsWith("fe80:", ignoreCase = true) ||
+                           remoteIp.startsWith("fc", ignoreCase = true) ||
+                           remoteIp.startsWith("fd", ignoreCase = true)
+        if (isPrivateLan && candidate == "usb-zero-config") {
             ipAttempts.remove(remoteIp)
             return AuthResult.Authorized
         }

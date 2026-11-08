@@ -33,6 +33,9 @@ using namespace camphone;
 #define ID_TRAY_OPEN 2001
 #define ID_TRAY_EXIT 2002
 
+enum class UiLanguage { EN, PT };
+static UiLanguage g_ui_lang = UiLanguage::EN;
+
 static fs::path get_exe_dir() {
     char buf[MAX_PATH]{};
     GetModuleFileNameA(nullptr, buf, MAX_PATH);
@@ -83,7 +86,9 @@ static bool install_zero_config_bundle(std::string& out_msg, bool allow_uac_prom
     });
 
     if (dll_src.empty()) {
-        out_msg = "[ERRO] Arquivo cameraphone.dll nao encontrado.";
+        out_msg = (g_ui_lang == UiLanguage::PT)
+            ? "[ERRO] Arquivo cameraphone.dll nao encontrado."
+            : "[ERROR] cameraphone.dll file not found.";
         DiagnosticLogger::error("Installer", out_msg);
         return false;
     }
@@ -94,7 +99,9 @@ static bool install_zero_config_bundle(std::string& out_msg, bool allow_uac_prom
     const fs::path obs_adb_dir = obs_data_dir / "adb";
 
     if (!fs::exists(obs_plugins_dir)) {
-        out_msg = "[AVISO] Pasta de plugins nao encontrada em C:\\Program Files\\obs-studio\\obs-plugins\\64bit.";
+        out_msg = (g_ui_lang == UiLanguage::PT)
+            ? "[AVISO] Pasta de plugins nao encontrada em C:\\Program Files\\obs-studio\\obs-plugins\\64bit."
+            : "[WARNING] OBS plugin folder not found at C:\\Program Files\\obs-studio\\obs-plugins\\64bit.";
         DiagnosticLogger::warn("Installer", out_msg);
         return false;
     }
@@ -133,16 +140,23 @@ static bool install_zero_config_bundle(std::string& out_msg, bool allow_uac_prom
                 fs::copy_file(adb_parent / "AdbWinUsbApi.dll", obs_adb_dir / "AdbWinUsbApi.dll", fs::copy_options::overwrite_existing, ec);
             }
         }
-        out_msg = "[ZERO-CONFIG INSTALADO COM SUCESSO]\r\n"
-                  "  * Plugin OBS: C:\\Program Files\\obs-studio\\obs-plugins\\64bit\\cameraphone.dll\r\n"
-                  "  * Câmera Virtual: CameraPhone Virtual Camera registrada (NVIDIA Broadcast pronta!)\r\n"
-                  "  * Driver ADB & APK atualizados para conexao USB plug-and-play.";
+        out_msg = (g_ui_lang == UiLanguage::PT)
+            ? "[ZERO-CONFIG INSTALADO COM SUCESSO]\r\n"
+              "  * Plugin OBS: C:\\Program Files\\obs-studio\\obs-plugins\\64bit\\cameraphone.dll\r\n"
+              "  * Câmera Virtual: CameraPhone Virtual Camera registrada (NVIDIA Broadcast pronta!)\r\n"
+              "  * Driver ADB & APK atualizados para conexao USB/Wi-Fi plug-and-play."
+            : "[ZERO-CONFIG INSTALLED SUCCESSFULLY]\r\n"
+              "  * OBS Plugin: C:\\Program Files\\obs-studio\\obs-plugins\\64bit\\cameraphone.dll\r\n"
+              "  * Virtual Camera: CameraPhone Virtual Camera registered (NVIDIA Broadcast ready!)\r\n"
+              "  * ADB Driver & APK updated for plug-and-play USB & Wi-Fi streaming.";
         DiagnosticLogger::info("Installer", "Zero-config bundle installed successfully.");
         return true;
     }
 
     if (!allow_uac_prompt) {
-        out_msg = "[ERRO] Sem permissao de escrita em C:\\Program Files (feche o OBS ou Broadcast e execute como Administrador).";
+        out_msg = (g_ui_lang == UiLanguage::PT)
+            ? "[ERRO] Sem permissao de escrita em C:\\Program Files (feche o OBS ou Broadcast e execute como Administrador)."
+            : "[ERROR] No write permission in C:\\Program Files (close OBS or Broadcast and run as Administrator).";
         DiagnosticLogger::error("Installer", out_msg);
         return false;
     }
@@ -163,12 +177,16 @@ static bool install_zero_config_bundle(std::string& out_msg, bool allow_uac_prom
     }
 
     if (fs::exists(dll_dst)) {
-        out_msg = "[ZERO-CONFIG ATIVO] Plugin cameraphone.dll + CameraPhone.apk + ADB instalados!";
+        out_msg = (g_ui_lang == UiLanguage::PT)
+            ? "[ZERO-CONFIG ATIVO] Plugin cameraphone.dll + CameraPhone.apk + ADB instalados!"
+            : "[ZERO-CONFIG ACTIVE] Plugin cameraphone.dll + CameraPhone.apk + ADB installed!";
         DiagnosticLogger::info("Installer", out_msg);
         return true;
     }
 
-    out_msg = "[AVISO] Nao foi possivel sobrescrever arquivos (feche o OBS ou NVIDIA Broadcast se estiver aberto).";
+    out_msg = (g_ui_lang == UiLanguage::PT)
+        ? "[AVISO] Nao foi possivel sobrescrever arquivos (feche o OBS ou NVIDIA Broadcast se estiver aberto)."
+        : "[WARNING] Could not overwrite files (please close OBS or NVIDIA Broadcast if running).";
     DiagnosticLogger::warn("Installer", out_msg);
     return false;
 }
@@ -180,7 +198,7 @@ static std::string install_android_apk_and_tunnel() {
     return msg;
 }
 
-// Background USB video feeder that streams USB directly to DirectShow VCam for NVIDIA Broadcast
+// Background Hybrid (USB + Wi-Fi) video feeder that streams directly to DirectShow VCam for NVIDIA Broadcast
 class UsbBroadcastFeeder {
 public:
     void start() {
@@ -210,25 +228,53 @@ private:
             // Yield cleanly while OBS Studio's native CameraPhone source is actively streaming
             if (OBSStreamGuard::is_obs_streaming()) {
                 m_streaming.store(false);
-                m_status = "OBS Studio ativo (Camera Virtual alimentada pelo OBS)";
+                m_status = "OBS Studio active (Virtual Camera fed by OBS)";
                 std::this_thread::sleep_for(std::chrono::milliseconds(1000));
                 continue;
             }
 
+            std::string target_host;
+            std::string target_pin = "usb-zero-config";
+            bool is_usb = false;
+            DeviceCapabilities caps{};
+            bool connected_caps = false;
+
+            // Priority 1: Check USB Cable (127.0.0.1:4748)
             std::string usb_hint;
-            auto devs = DiscoveryManager::list_usb_devices(4748, 4748, &usb_hint);
-            if (devs.empty()) {
-                m_streaming.store(false);
-                m_status = "Aguardando celular no cabo USB...";
-                std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-                continue;
+            auto usb_devs = DiscoveryManager::list_usb_devices(4748, 4748, &usb_hint);
+            if (!usb_devs.empty()) {
+                if (m_client.fetch_capabilities("127.0.0.1", 4748, "usb-zero-config", caps)) {
+                    target_host = "127.0.0.1";
+                    target_pin = "usb-zero-config";
+                    is_usb = true;
+                    connected_caps = true;
+                }
             }
 
-            DeviceCapabilities caps{};
-            if (!m_client.fetch_capabilities("127.0.0.1", 4748, "usb-zero-config", caps)) {
+            // Priority 2: Automatic Wi-Fi LAN Discovery (UDP 4749 Beacon + Saved IP + Fast Subnet Scan)
+            if (!connected_caps) {
+                std::string disc_pin;
+                auto wifi_devs = DiscoveryManager::discover_wifi_devices(4748, &disc_pin);
+                if (!wifi_devs.empty()) {
+                    const std::string wifi_ip = wifi_devs.front().host;
+                    if (m_client.fetch_capabilities(wifi_ip, 4748, "usb-zero-config", caps)) {
+                        target_host = wifi_ip;
+                        target_pin = "usb-zero-config";
+                        is_usb = false;
+                        connected_caps = true;
+                    } else if (!disc_pin.empty() && m_client.fetch_capabilities(wifi_ip, 4748, disc_pin, caps)) {
+                        target_host = wifi_ip;
+                        target_pin = disc_pin;
+                        is_usb = false;
+                        connected_caps = true;
+                    }
+                }
+            }
+
+            if (!connected_caps) {
                 m_streaming.store(false);
-                m_status = "Cabo USB conectado. Abra o app CameraPhone no celular.";
-                std::this_thread::sleep_for(std::chrono::milliseconds(600));
+                m_status = "Waiting for phone on USB Cable or Wi-Fi...";
+                std::this_thread::sleep_for(std::chrono::milliseconds(1200));
                 continue;
             }
 
@@ -237,9 +283,9 @@ private:
             }
 
             StreamConfig cfg{};
-            cfg.host = "127.0.0.1";
+            cfg.host = target_host;
             cfg.port = 4748;
-            cfg.pin = "usb-zero-config";
+            cfg.pin = target_pin;
             cfg.width = 1920;
             cfg.height = 1080;
             cfg.fps = 60;
@@ -261,7 +307,8 @@ private:
 
             if (m_running.load() && m_client.is_connected() && !OBSStreamGuard::is_obs_streaming()) {
                 m_streaming.store(true);
-                m_status = "Transmitindo USB -> CameraPhone Virtual Camera (" + caps.device_model + ")";
+                m_status = std::string("Streaming ") + (is_usb ? "USB" : ("Wi-Fi (" + target_host + ")")) +
+                           " -> CameraPhone Virtual Camera (" + caps.device_model + ")";
                 DiagnosticLogger::info("UsbFeeder", m_status);
 
                 while (m_running.load() && m_client.is_connected() && !OBSStreamGuard::is_obs_streaming()) {
@@ -294,15 +341,12 @@ private:
 
     std::atomic<bool> m_running{false};
     std::atomic<bool> m_streaming{false};
-    std::string       m_status = "Iniciando...";
+    std::string       m_status = "Starting...";
     StreamClient      m_client;
     std::thread       m_thread;
 };
 
 static UsbBroadcastFeeder g_feeder;
-
-enum class UiLanguage { PT, EN };
-static UiLanguage g_ui_lang = UiLanguage::PT;
 
 enum ControlIds : int {
     ID_BTN_INSTALL_PLUGIN = 101,
@@ -336,7 +380,7 @@ static void update_ui_language(HWND hwnd) {
         if (g_btn_usb_hwnd) SetWindowTextA(g_btn_usb_hwnd, "2. Instalar APK no Celular");
         if (g_btn_probe_hwnd) SetWindowTextA(g_btn_probe_hwnd, "3. Testar Conexao");
         if (g_btn_logs_hwnd) SetWindowTextA(g_btn_logs_hwnd, "4. Ver Logs");
-        if (g_btn_lang_hwnd) SetWindowTextA(g_btn_lang_hwnd, "Idioma");
+        if (g_btn_lang_hwnd) SetWindowTextA(g_btn_lang_hwnd, "Language: PT");
         if (g_console_lbl_hwnd) SetWindowTextA(g_console_lbl_hwnd, "CONSOLE DE DIAGNOSTICO EM TEMPO REAL");
     } else {
         SetWindowTextA(hwnd, "CameraPhone 4K Pro - Companion & DirectShow Virtual Camera");
@@ -346,7 +390,7 @@ static void update_ui_language(HWND hwnd) {
         if (g_btn_usb_hwnd) SetWindowTextA(g_btn_usb_hwnd, "2. Install APK on Phone");
         if (g_btn_probe_hwnd) SetWindowTextA(g_btn_probe_hwnd, "3. Test Connection");
         if (g_btn_logs_hwnd) SetWindowTextA(g_btn_logs_hwnd, "4. View Logs");
-        if (g_btn_lang_hwnd) SetWindowTextA(g_btn_lang_hwnd, "Language");
+        if (g_btn_lang_hwnd) SetWindowTextA(g_btn_lang_hwnd, "Language: EN");
         if (g_console_lbl_hwnd) SetWindowTextA(g_console_lbl_hwnd, "REAL-TIME DIAGNOSTIC CONSOLE");
     }
 }
@@ -361,16 +405,37 @@ static void append_log(const std::string& msg) {
 
 static void fetch_and_display_all_logs() {
     std::ostringstream ss;
-    ss << "\r\n==================== DIAGNOSTICO INTEGRADO (PC + APK) ====================\r\n";
-    ss << "[1] LOG LOCAL DO PC (" << DiagnosticLogger::log_file_path().string() << "):\r\n";
+    if (g_ui_lang == UiLanguage::PT) {
+        ss << "\r\n==================== DIAGNOSTICO INTEGRADO (PC + APK) ====================\r\n";
+        ss << "[1] LOG LOCAL DO PC (" << DiagnosticLogger::log_file_path().string() << "):\r\n";
+    } else {
+        ss << "\r\n==================== INTEGRATED DIAGNOSTICS (PC + APK) ===================\r\n";
+        ss << "[1] LOCAL PC LOG (" << DiagnosticLogger::log_file_path().string() << "):\r\n";
+    }
     ss << DiagnosticLogger::read_tail(6144) << "\r\n";
 
     StreamClient client;
     std::string apk_logs;
     if (client.fetch_remote_logs("127.0.0.1", 4748, "usb-zero-config", apk_logs)) {
-        ss << "[2] LOGS REMOTOS DO APK NO CELULAR (USB 127.0.0.1:4748):\r\n" << apk_logs;
+        ss << (g_ui_lang == UiLanguage::PT
+               ? "[2] LOGS REMOTOS DO APK NO CELULAR (USB 127.0.0.1:4748):\r\n"
+               : "[2] REMOTE PHONE APK LOGS (USB 127.0.0.1:4748):\r\n")
+           << apk_logs;
     } else {
-        ss << "[2] LOGS REMOTOS DO APK: Celular desconectado ou app CameraPhone fechado no momento.\r\n";
+        std::string disc_pin;
+        auto wifi_devs = DiscoveryManager::discover_wifi_devices(4748, &disc_pin);
+        if (!wifi_devs.empty() &&
+            (client.fetch_remote_logs(wifi_devs[0].host, 4748, "usb-zero-config", apk_logs) ||
+             (!disc_pin.empty() && client.fetch_remote_logs(wifi_devs[0].host, 4748, disc_pin, apk_logs)))) {
+            ss << (g_ui_lang == UiLanguage::PT
+                   ? "[2] LOGS REMOTOS DO APK NO CELULAR (Wi-Fi "
+                   : "[2] REMOTE PHONE APK LOGS (Wi-Fi ")
+               << wifi_devs[0].host << ":4748):\r\n" << apk_logs;
+        } else {
+            ss << (g_ui_lang == UiLanguage::PT
+                   ? "[2] LOGS REMOTOS DO APK: Celular desconectado ou app CameraPhone fechado no momento.\r\n"
+                   : "[2] REMOTE APK LOGS: Phone disconnected or CameraPhone app currently closed.\r\n");
+        }
     }
     ss << "==========================================================================\r\n";
     append_log(ss.str());
@@ -384,7 +449,7 @@ static void init_tray_icon(HWND hwnd) {
     g_nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     g_nid.uCallbackMessage = WM_TRAYICON;
     g_nid.hIcon = LoadIconA(GetModuleHandleA(nullptr), MAKEINTRESOURCEA(1));
-    strcpy_s(g_nid.szTip, "CameraPhone 4K Pro (Transmissao Ativa)");
+    strcpy_s(g_nid.szTip, "CameraPhone 4K Pro (Active Streaming)");
     Shell_NotifyIconA(NIM_ADD, &g_nid);
 }
 
@@ -429,39 +494,39 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
                                        WS_CHILD | WS_VISIBLE, 20, 14, 300, 26, hwnd, nullptr, nullptr, nullptr);
         SendMessageA(g_title_hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font_title), TRUE);
 
-        g_subtitle_hwnd = CreateWindowExA(0, "STATIC", "Câmera Virtual NVIDIA Broadcast & Plugin OBS Zero-Config",
+        g_subtitle_hwnd = CreateWindowExA(0, "STATIC", "NVIDIA Broadcast Virtual Camera & OBS Zero-Config Plugin",
                                           WS_CHILD | WS_VISIBLE, 20, 40, 480, 18, hwnd, nullptr, nullptr, nullptr);
         SendMessageA(g_subtitle_hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font_sub), TRUE);
 
         // Language toggle button at top right
-        g_btn_lang_hwnd = CreateWindowExA(0, "BUTTON", "Idioma",
+        g_btn_lang_hwnd = CreateWindowExA(0, "BUTTON", "Language: EN",
                                           WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                                          640, 16, 90, 30, hwnd, reinterpret_cast<HMENU>(ID_BTN_TOGGLE_LANG), nullptr, nullptr);
+                                          620, 16, 110, 30, hwnd, reinterpret_cast<HMENU>(ID_BTN_TOGGLE_LANG), nullptr, nullptr);
         SendMessageA(g_btn_lang_hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font_btn), TRUE);
 
         // Action Buttons Row (Top Toolbar)
-        g_btn_install_hwnd = CreateWindowExA(0, "BUTTON", "1. Instalar Tudo (OBS + VCam)",
+        g_btn_install_hwnd = CreateWindowExA(0, "BUTTON", "1. Install All (OBS + VCam)",
                                              WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
                                              20, 70, 195, 36, hwnd, reinterpret_cast<HMENU>(ID_BTN_INSTALL_PLUGIN), nullptr, nullptr);
         SendMessageA(g_btn_install_hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font_btn), TRUE);
 
-        g_btn_usb_hwnd = CreateWindowExA(0, "BUTTON", "2. Instalar APK no Celular",
+        g_btn_usb_hwnd = CreateWindowExA(0, "BUTTON", "2. Install APK on Phone",
                                          WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
                                          225, 70, 175, 36, hwnd, reinterpret_cast<HMENU>(ID_BTN_SETUP_USB), nullptr, nullptr);
         SendMessageA(g_btn_usb_hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font_btn), TRUE);
 
-        g_btn_probe_hwnd = CreateWindowExA(0, "BUTTON", "3. Testar Conexao",
+        g_btn_probe_hwnd = CreateWindowExA(0, "BUTTON", "3. Test Connection",
                                            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
                                            410, 70, 150, 36, hwnd, reinterpret_cast<HMENU>(ID_BTN_PROBE_CAPS), nullptr, nullptr);
         SendMessageA(g_btn_probe_hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font_btn), TRUE);
 
-        g_btn_logs_hwnd = CreateWindowExA(0, "BUTTON", "4. Ver Logs",
+        g_btn_logs_hwnd = CreateWindowExA(0, "BUTTON", "4. View Logs",
                                           WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
                                           570, 70, 160, 36, hwnd, reinterpret_cast<HMENU>(ID_BTN_VIEW_LOGS), nullptr, nullptr);
         SendMessageA(g_btn_logs_hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font_btn), TRUE);
 
         // Console Header Label
-        g_console_lbl_hwnd = CreateWindowExA(0, "STATIC", "CONSOLE DE DIAGNOSTICO EM TEMPO REAL",
+        g_console_lbl_hwnd = CreateWindowExA(0, "STATIC", "REAL-TIME DIAGNOSTIC CONSOLE",
                                              WS_CHILD | WS_VISIBLE, 20, 116, 400, 16, hwnd, nullptr, nullptr, nullptr);
         SendMessageA(g_console_lbl_hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font_console_lbl), TRUE);
 
@@ -471,16 +536,17 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
                                      20, 136, 710, 335, hwnd, reinterpret_cast<HMENU>(ID_EDIT_LOG), nullptr, nullptr);
         SendMessageA(g_edit_log, WM_SETFONT, reinterpret_cast<WPARAM>(font_log), TRUE);
 
+        update_ui_language(hwnd);
         init_tray_icon(hwnd);
         g_feeder.start();
 
         std::string auto_install_msg;
         install_zero_config_bundle(auto_install_msg, true);
         append_log(auto_install_msg);
-        append_log("[Sistema] Transmissao USB para CameraPhone Virtual Camera (NVIDIA Broadcast) iniciada.");
-        append_log("[Dica] Para transmissao via cabo USB: apenas conecte o celular com depuracao USB ativa!");
-        append_log("[Dica] No OBS Studio: adicione a fonte 'CameraPhone 4K Pro' e selecione Cabo USB ou preencha o IP.");
-        append_log("[Dica] No NVIDIA Broadcast: selecione 'CameraPhone Virtual Camera' na lista de cameras.");
+        append_log("[System] Automatic USB & Wi-Fi streaming to CameraPhone Virtual Camera (NVIDIA Broadcast) started.");
+        append_log("[Tip] For USB or Wi-Fi: simply open CameraPhone on your phone (USB cable or same Wi-Fi network)!");
+        append_log("[Tip] In OBS Studio: add source 'CameraPhone 4K Pro' and select USB Cable or Wi-Fi.");
+        append_log("[Tip] In NVIDIA Broadcast: select 'CameraPhone Virtual Camera' in the Camera device list.");
         return 0;
     }
     case WM_CTLCOLORSTATIC: {
@@ -532,7 +598,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
             return 0;
         }
         if (id == ID_BTN_TOGGLE_LANG) {
-            g_ui_lang = (g_ui_lang == UiLanguage::PT) ? UiLanguage::EN : UiLanguage::PT;
+            g_ui_lang = (g_ui_lang == UiLanguage::EN) ? UiLanguage::PT : UiLanguage::EN;
             update_ui_language(hwnd);
             if (g_ui_lang == UiLanguage::PT) {
                 append_log("[Idioma] Idioma da interface alterado para Portugues.");
@@ -546,36 +612,75 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
             install_zero_config_bundle(status, true);
             append_log(status);
         } else if (id == ID_BTN_SETUP_USB) {
-            append_log("[Instalando APK via Cabo USB...]");
+            append_log(g_ui_lang == UiLanguage::PT ? "[Instalando APK via Cabo USB...]" : "[Installing APK via USB Cable...]");
             append_log(install_android_apk_and_tunnel());
         } else if (id == ID_BTN_PROBE_CAPS) {
             std::string usb_hint;
             auto devs = DiscoveryManager::list_usb_devices(4748, 4748, &usb_hint);
-            if (!devs.empty()) {
-                append_log("[USB DETECTADO] " + devs[0].display_name);
-                DiscoveryManager::ensure_usb_tunnel_ready(4748, 4748, true);
-                Sleep(400);
-            } else {
-                append_log("[AVISO USB] " + (usb_hint.empty() ? "Nenhum celular detectado via USB." : usb_hint));
-            }
-
             StreamClient client;
             DeviceCapabilities caps{};
-            if (client.fetch_capabilities("127.0.0.1", 4748, "usb-zero-config", caps)) {
+            bool ok = false;
+            std::string conn_label = "USB 127.0.0.1:4748";
+
+            if (!devs.empty()) {
+                append_log((g_ui_lang == UiLanguage::PT ? "[USB DETECTADO] " : "[USB DETECTED] ") + devs[0].display_name);
+                DiscoveryManager::ensure_usb_tunnel_ready(4748, 4748, true);
+                Sleep(400);
+                ok = client.fetch_capabilities("127.0.0.1", 4748, "usb-zero-config", caps);
+            }
+
+            if (!ok) {
+                std::string disc_pin;
+                auto wifi_devs = DiscoveryManager::discover_wifi_devices(4748, &disc_pin);
+                if (!wifi_devs.empty()) {
+                    const std::string wip = wifi_devs[0].host;
+                    append_log((g_ui_lang == UiLanguage::PT
+                                ? "[WI-FI DETECTADO] Celular encontrado na rede local em "
+                                : "[WI-FI DETECTED] Phone found on local network at ") + wip + ":4748");
+                    conn_label = "Wi-Fi " + wip + ":4748";
+                    ok = client.fetch_capabilities(wip, 4748, "usb-zero-config", caps);
+                    if (!ok && !disc_pin.empty()) {
+                        ok = client.fetch_capabilities(wip, 4748, disc_pin, caps);
+                    }
+                    if (!ok) {
+                        append_log(g_ui_lang == UiLanguage::PT
+                            ? "[AVISO WI-FI] Conecte o cabo USB uma vez e clique em '2. Instalar APK no Celular' para liberar o Wi-Fi Zero-Config!"
+                            : "[WI-FI NOTICE] Connect USB cable once and click '2. Install APK on Phone' to enable automatic Wi-Fi Zero-Config!");
+                    }
+                } else {
+                    append_log((g_ui_lang == UiLanguage::PT ? "[AVISO] " : "[NOTICE] ") +
+                               (usb_hint.empty()
+                                ? (g_ui_lang == UiLanguage::PT ? "Nenhum celular detectado via Cabo USB ou Wi-Fi." : "No phone detected via USB Cable or Wi-Fi.")
+                                : usb_hint));
+                }
+            }
+
+            if (ok) {
                 std::ostringstream ss;
-                ss << "[CONECTADO COM SUCESSO]\r\n"
-                   << "  Modelo: " << caps.device_model << " (" << caps.soc << ")\r\n"
-                   << "  Codecs Hardware: HEVC=" << (caps.supports_hevc ? "Sim" : "Nao")
-                   << " | AV1=" << (caps.supports_av1 ? "Sim" : "Nao")
-                   << " | HDR10=" << (caps.supports_hdr10 ? "Sim" : "Nao") << "\r\n"
-                   << "  Lentes Fisicas Detectadas: " << caps.lenses.size();
+                if (g_ui_lang == UiLanguage::PT) {
+                    ss << "[CONECTADO COM SUCESSO (" << conn_label << ")]\r\n"
+                       << "  Modelo: " << caps.device_model << " (" << caps.soc << ")\r\n"
+                       << "  Codecs Hardware: HEVC=" << (caps.supports_hevc ? "Sim" : "Nao")
+                       << " | AV1=" << (caps.supports_av1 ? "Sim" : "Nao")
+                       << " | HDR10=" << (caps.supports_hdr10 ? "Sim" : "Nao") << "\r\n"
+                       << "  Lentes Fisicas Detectadas: " << caps.lenses.size();
+                } else {
+                    ss << "[CONNECTED SUCCESSFULLY (" << conn_label << ")]\r\n"
+                       << "  Model: " << caps.device_model << " (" << caps.soc << ")\r\n"
+                       << "  Hardware Codecs: HEVC=" << (caps.supports_hevc ? "Yes" : "No")
+                       << " | AV1=" << (caps.supports_av1 ? "Yes" : "No")
+                       << " | HDR10=" << (caps.supports_hdr10 ? "Yes" : "No") << "\r\n"
+                       << "  Physical Lenses Detected: " << caps.lenses.size();
+                }
                 for (const auto& l : caps.lenses) {
                     ss << "\r\n    * ID [" << l.id << "] " << l.label << " (" << l.focal_mm << "mm"
                        << (l.ois ? ", OIS" : "") << ")";
                 }
                 append_log(ss.str());
             } else {
-                append_log("[FALHA] Celular nao respondeu em 127.0.0.1:4748. Verifique se o app CameraPhone esta aberto na tela do celular.");
+                append_log(g_ui_lang == UiLanguage::PT
+                    ? "[FALHA] Verifique se o app CameraPhone esta aberto na tela do celular (Cabo USB ou mesma rede Wi-Fi)."
+                    : "[FAILED] Make sure the CameraPhone app is open on your phone (USB Cable or same Wi-Fi network).");
             }
         } else if (id == ID_BTN_VIEW_LOGS) {
             fetch_and_display_all_logs();
@@ -658,7 +763,7 @@ int main(int argc, char** argv) {
     RegisterClassA(&wc);
 
     HWND hwnd = CreateWindowExA(
-        0, wc.lpszClassName, "CameraPhone 4K Pro - Companion & Câmera Virtual DirectShow",
+        0, wc.lpszClassName, "CameraPhone 4K Pro - Companion & DirectShow Virtual Camera",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         CW_USEDEFAULT, CW_USEDEFAULT, 765, 525,
         nullptr, nullptr, wc.hInstance, nullptr

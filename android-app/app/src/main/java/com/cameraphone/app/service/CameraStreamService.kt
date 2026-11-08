@@ -20,6 +20,11 @@ import com.cameraphone.app.probe.DeviceCapabilityProfile
 import com.cameraphone.app.security.CameraBounds
 import com.cameraphone.app.security.SecurityGate
 import com.cameraphone.app.util.AppLogger
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.util.concurrent.atomic.AtomicBoolean
 
 class CameraStreamService : Service() {
 
@@ -37,6 +42,8 @@ class CameraStreamService : Service() {
     private var audioEncoder: HardwareAudioEncoder? = null
     private var nsdManager: NsdManager? = null
     private var nsdListener: NsdManager.RegistrationListener? = null
+    private var udpSocket: DatagramSocket? = null
+    private val udpRunning = AtomicBoolean(false)
     private lateinit var capabilities: DeviceCapabilityProfile
 
     @Volatile
@@ -75,7 +82,7 @@ class CameraStreamService : Service() {
         }
 
         createNotificationChannel()
-        startForeground(1001, buildNotification("Ready for OBS Studio connection (USB & Wi-Fi)"))
+        startForeground(1001, buildNotification("Ready for OBS Studio & NVIDIA Broadcast connection (USB & Wi-Fi)"))
         capabilities = CapabilityProbe.probeDevice(this)
         AppLogger.info("Service", "Probed ${capabilities.lenses.size} lenses, codecs=${capabilities.codecs}")
         cameraController = Camera2Controller(this)
@@ -126,6 +133,9 @@ class CameraStreamService : Service() {
 
         if (!usbOnly) {
             registerMdns(4748)
+            startUdpBeacon(4748)
+        } else {
+            stopUdpBeacon()
         }
     }
 
@@ -221,6 +231,52 @@ class CameraStreamService : Service() {
         nsdListener = null
     }
 
+    private fun startUdpBeacon(streamPort: Int) {
+        stopUdpBeacon()
+        udpRunning.set(true)
+        Thread({
+            var sock: DatagramSocket? = null
+            try {
+                sock = DatagramSocket(null).apply {
+                    reuseAddress = true
+                    broadcast = true
+                    soTimeout = 1500
+                    bind(InetSocketAddress(4749))
+                }
+                udpSocket = sock
+                val recvBuf = ByteArray(256)
+                while (udpRunning.get()) {
+                    val payload = "CAMPHONE_HERE_V1|$streamPort|${securityGate.currentPin}|${Build.MANUFACTURER} ${Build.MODEL}"
+                    val bytes = payload.toByteArray(Charsets.UTF_8)
+                    try {
+                        val bcast = DatagramPacket(bytes, bytes.size, InetAddress.getByName("255.255.255.255"), 4749)
+                        sock.send(bcast)
+                    } catch (_: Exception) {}
+
+                    try {
+                        val pkt = DatagramPacket(recvBuf, recvBuf.size)
+                        sock.receive(pkt)
+                        val msg = String(pkt.data, 0, pkt.length, Charsets.UTF_8)
+                        if (msg.startsWith("CAMPHONE_DISCOVER_V1")) {
+                            val reply = DatagramPacket(bytes, bytes.size, pkt.address, pkt.port)
+                            sock.send(reply)
+                        }
+                    } catch (_: Exception) {}
+                }
+            } catch (e: Throwable) {
+                AppLogger.warn("UDP-Beacon", "UDP discovery socket closed: ${e.message}")
+            } finally {
+                try { sock?.close() } catch (_: Exception) {}
+            }
+        }, "CamPhone-UDP-Beacon").apply { isDaemon = true; start() }
+    }
+
+    private fun stopUdpBeacon() {
+        udpRunning.set(false)
+        try { udpSocket?.close() } catch (_: Exception) {}
+        udpSocket = null
+    }
+
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val ch = NotificationChannel("camphone_ch", "CameraPhone Service", NotificationManager.IMPORTANCE_LOW)
@@ -247,6 +303,7 @@ class CameraStreamService : Service() {
 
     override fun onDestroy() {
         stopHardwarePipeline()
+        stopUdpBeacon()
         unregisterMdns()
         server?.stop()
         super.onDestroy()

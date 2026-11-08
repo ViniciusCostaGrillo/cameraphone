@@ -39,53 +39,82 @@ def create_bundle_zip(zip_path: Path):
                     zf.write(f, f"adb/{f.name}")
     print(f"Bundle ZIP created ({zip_path.stat().st_size:,} bytes).")
 
-RELEASE_NOTES = """## 📱🎥 CameraPhone — v1.3.0 (Novo Instalador Windows & Correção NVIDIA Broadcast)
+RELEASE_NOTES = """## 📱🎥 CameraPhone 4K Pro — v1.4.0 (Wireless Wi-Fi & USB NVIDIA Broadcast + English Default UI)
 
-Esta versão traz o novo **Instalador Completo do Windows (`CameraPhone-Setup.exe`)**, a correção definitiva para a *"Falha na funcionalidade"* no **NVIDIA Broadcast**, a transmissão direta por **Cabo USB** sem precisar abrir o OBS Studio, e o redesign completo da interface gráfica no estilo do ícone oficial!
-
----
-
-### ✨ Principais Novidades & Destaques
-
-#### 1. 🚀 Novo Instalador Windows Oficial (`CameraPhone-Setup.exe`)
-- **Instalação em 1 Clique:** Instala automaticamente todos os componentes em `C:\\Program Files\\CameraPhone\\` e `C:\\Program Files\\obs-studio\\obs-plugins\\64bit\\`.
-- **Inicia com o Windows:** Configura a chave `CameraPhone` em `HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run` com a flag `--background`.
-- **Bandeja do Sistema (System Tray):** Fica em segundo plano minimizado na bandeja, mantendo os servidores e a câmera virtual sempre prontos.
-- **Atalhos Oficiais:** Cria atalhos na Área de Trabalho e no Menu Iniciar automaticamente.
-
-#### 2. 🎥 Correção Definitiva do NVIDIA Broadcast ("Falha na funcionalidade")
-- **Alinhamento de GUIDs COM DirectShow:** Corrigidas as GUIDs de `IMemInputPin` (`{56A8689D-0AD4-11CE-B03A-0020AF0BA770}`), `IMemAllocator` e flags de categoria no driver `cameraphone-vcam.dll`.
-- **Ciclo de Vida do Alocador DirectShow:** Adicionadas chamadas explícitas a `m_pAllocator->Commit()` nas transições `Pause()` e `Run()`, e `Decommit()` em `Stop()`, eliminando o erro `VFW_E_NOT_COMMITTED (0x80040211)` e permitindo que os modelos TensorRT Maxine AI da NVIDIA inicializem perfeitamente.
-
-#### 3. 🔌 Transmissão Direta por Cabo USB (Zero-Config Broadcast)
-- O Companion (`CameraPhone.exe`) agora possui o alimentador contínuo em segundo plano: basta plugar o celular no cabo USB que o vídeo já é decodificado e alimentado na câmera virtual.
-- Você pode usar o **NVIDIA Broadcast**, **Zoom**, **Discord**, **Teams** e **Google Meet** diretamente com o celular sem precisar abrir o OBS Studio!
-
-#### 4. 🎨 Redesign Moderno Inspirado no Ícone & Correção de Idioma
-- **Visual Dark Slate:** Janela em `#12161A`, botões ergonômicos no topo e console amplo de logs em tempo real em `#0D1117`.
-- **Botão de Idioma Corrigido:** Texto estrito `Idioma` (em Português) ou `Language` (em Inglês).
-- **Sem poluição visual:** Lacunas de IP/PIN removidas da tela principal (o cabo USB é automático e no OBS o IP pode ser configurado diretamente na fonte).
+🌐 **Official Website:** [https://viniciuscostagrillo.github.io/cameraphone/](https://viniciuscostagrillo.github.io/cameraphone/)
 
 ---
 
-### 📦 Arquivos da Release
+# 🇺🇸 English Release Notes
 
-| Arquivo | Descrição |
+**CameraPhone 4K Pro v1.4.0** introduces **Zero-Config Wireless Wi-Fi + USB streaming for NVIDIA Broadcast**, sets **English (`EN`) as the default interface language** across all apps (with an instant **`Language: EN / PT`** toggle button), and launches the official GitHub Pages project website!
+
+### ✨ Key New Features in v1.4.0
+1. **📶 Automatic Wi-Fi + USB Streaming for NVIDIA Broadcast:**
+   - `CameraPhone.exe` now features a hybrid USB + Wi-Fi auto-discovery engine (`DiscoveryManager::discover_wifi_devices`).
+   - When connected via USB, it streams with zero-config over ADB loopback (`127.0.0.1:4748`) and automatically caches your phone's `wlan0` Wi-Fi IP.
+   - Unplug the USB cable at any time: `CameraPhone.exe` automatically discovers your phone on the local Wi-Fi network (via cached IP, UDP beacon on port `4749`, or fast non-blocking `/24` TCP scan) and continues feeding **`CameraPhone Virtual Camera`** in **NVIDIA Broadcast** wirelessly without needing to type any IP or PIN!
+2. **🌐 English Default UI + Instant `Language: EN / PT` Toggle:**
+   - All applications (`CameraPhone-Setup.exe`, `CameraPhone.exe`, `CameraPhone.apk`, and the OBS Studio plugin) now default to **English (`EN`)** with a top-right **`Language: EN / PT`** button to switch to Portuguese (`PT-BR`) at any time.
+3. **🛡️ Private LAN Zero-Config Security (`SecurityGate.kt`):**
+   - Authorizes zero-config connections from loopback (`127.0.0.1`) and RFC1918 private LAN subnets (`192.168.*`, `10.*`, `172.16-31.*`) while blocking any external/public WAN IP.
+
+### 📦 Official Downloads (`v1.4.0`)
+| File | Description |
 | :--- | :--- |
-| **`CameraPhone-Setup.exe`** | **Instalador Oficial Completo do Windows** (Recomendado para todos os usuários) |
-| **`CameraPhone-v1.3.0-Windows.zip`** | Pacote portátil completo (Executável, Plugin OBS, VCam, APK e ADB) |
-| **`CameraPhone.exe`** | Companion Desktop e Alimentador USB da Câmera Virtual |
-| **`CameraPhone.apk`** | Aplicativo Android oficial assinado (v1/v2/v3) com PIN persistente |
-| **`cameraphone.dll`** | Plugin nativo 64-bit para OBS Studio (`C:\\Program Files\\obs-studio\\obs-plugins\\64bit`) |
-| **`cameraphone-vcam.dll`** | Câmera Virtual DirectShow compatível com NVIDIA Broadcast |
+| **`CameraPhone-Setup.exe`** | **Full Windows Installer** (OBS Plugin, NVIDIA Broadcast Virtual Camera, Companion App, ADB, Shortcuts & Uninstaller) |
+| **`CameraPhone-v1.4.0-Windows.zip`** | Portable All-in-One Windows Bundle |
+| **`CameraPhone.exe`** | Standalone Desktop Companion & Hybrid USB/Wi-Fi Virtual Camera Feeder |
+| **`CameraPhone.apk`** | Signed Android App (Auto-connects via USB & Wi-Fi, OLED Blackout Mode, EN/PT Toggle) |
+| **`cameraphone.dll`** | Native 64-bit OBS Studio Plugin (`C:\\Program Files\\obs-studio\\obs-plugins\\64bit`) |
+| **`cameraphone-vcam.dll`** | 64-bit DirectShow 4K60 Virtual Camera for NVIDIA Broadcast |
+
+---
+
+# 🇧🇷 Notas de Lançamento (Português)
+
+O **CameraPhone 4K Pro v1.4.0** traz o suporte **Zero-Config Híbrido (Cabo USB + Wi-Fi Automático) para o NVIDIA Broadcast**, define o **Inglês (`EN`) como idioma padrão** em todos os aplicativos (com botão **`Language: EN / PT`** no topo direito para alternar para Português), e lança a página oficial do projeto no GitHub Pages!
+
+### ✨ Destaques da Versão v1.4.0
+1. **📶 Transmissão Automática via Wi-Fi e Cabo USB no NVIDIA Broadcast:**
+   - Use no **NVIDIA Broadcast** tanto pelo cabo USB quanto sem fio pela rede Wi-Fi, sem precisar digitar IP ou PIN!
+2. **🌐 Idioma Inglês como Padrão + Botão `Language: EN / PT`:**
+   - Todos os aplicativos (`CameraPhone-Setup.exe`, `CameraPhone.exe`, `CameraPhone.apk` e plugin OBS) iniciam em Inglês por padrão e possuem botão rápido para alternar para Português.
 """
+
+def enable_github_pages(repo: str, token: str):
+    url = f"https://api.github.com/repos/{repo}/pages"
+    payload = json.dumps({"source": {"branch": "main", "path": "/docs"}}).encode("utf-8")
+    for method in ("POST", "PUT"):
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={
+                "Authorization": f"token {token}",
+                "User-Agent": "CameraPhone-Release-Agent",
+                "Accept": "application/vnd.github+json",
+                "Content-Type": "application/json"
+            },
+            method=method
+        )
+        try:
+            with urllib.request.urlopen(req) as resp:
+                print(f"GitHub Pages configured ({method} -> HTTP {resp.status}): https://viniciuscostagrillo.github.io/cameraphone/")
+                return
+        except urllib.error.HTTPError as e:
+            err = e.read().decode("utf-8", errors="ignore")
+            if e.code == 409 and method == "POST":
+                continue
+            print(f"GitHub Pages {method} response ({e.code}): {err}")
 
 def main():
     token = get_token()
     repo = "ViniciusCostaGrillo/cameraphone"
-    tag = "v1.3.0"
+    tag = "v1.4.0"
 
-    zip_path = DIST / "CameraPhone-v1.3.0-Windows.zip"
+    enable_github_pages(repo, token)
+
+    zip_path = DIST / f"CameraPhone-{tag}-Windows.zip"
     create_bundle_zip(zip_path)
 
     assets_to_upload = [
@@ -105,7 +134,7 @@ def main():
     create_url = f"https://api.github.com/repos/{repo}/releases"
     payload = {
         "tag_name": tag,
-        "name": "CameraPhone v1.3.0 — Novo Instalador Windows & Correção NVIDIA Broadcast",
+        "name": "CameraPhone 4K Pro v1.4.0 — Wireless Wi-Fi & USB NVIDIA Broadcast + English/PT UI",
         "body": RELEASE_NOTES.strip(),
         "draft": False,
         "prerelease": False
@@ -145,12 +174,11 @@ def main():
             raise
 
     release_id = rel_data["id"]
-    upload_url_template = rel_data["upload_url"] # e.g. https://uploads.github.com/repos/.../assets{?name,label}
+    upload_url_template = rel_data["upload_url"]
     upload_url_base = upload_url_template.split('{')[0]
 
     print(f"Release ID: {release_id}. Uploading assets...")
 
-    # Fetch existing assets to avoid 422 duplicate asset errors
     assets_req = urllib.request.Request(
         f"https://api.github.com/repos/{repo}/releases/{release_id}/assets",
         headers={

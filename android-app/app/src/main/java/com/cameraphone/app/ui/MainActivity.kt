@@ -30,12 +30,12 @@ import com.cameraphone.app.util.AppLogger
 import java.net.Inet4Address
 import java.net.NetworkInterface
 
-enum class AppLanguage { PT, EN }
+enum class AppLanguage { EN, PT }
 
 class MainActivity : Activity() {
 
     private var streamService: CameraStreamService? = null
-    private var currentLanguage = AppLanguage.PT
+    private var currentLanguage = AppLanguage.EN
     private var currentTally = "idle"
     private var isStreaming = false
     private var lastTelemetryInfo = ""
@@ -79,13 +79,14 @@ class MainActivity : Activity() {
         super.onResume()
         streamService?.securityGate?.resetLockouts()
     }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val prefs = getSharedPreferences("cameraphone_prefs", Context.MODE_PRIVATE)
-        val savedLang = prefs.getString("language", "PT") ?: "PT"
-        currentLanguage = if (savedLang == "EN") AppLanguage.EN else AppLanguage.PT
+        val savedLang = prefs.getString("language_v2", "EN") ?: "EN"
+        currentLanguage = if (savedLang == "PT") AppLanguage.PT else AppLanguage.EN
 
         buildMinimalistOledUi()
         applyLanguageStrings()
@@ -138,12 +139,12 @@ class MainActivity : Activity() {
     }
 
     private fun applyLanguageStrings() {
-        langToggleBtn.text = if (currentLanguage == AppLanguage.PT) "🇧🇷 PT" else "🇺🇸 EN"
+        langToggleBtn.text = if (currentLanguage == AppLanguage.PT) "🌐 Language: PT" else "🌐 Language: EN"
         updateIpBanner(usbOnlySwitch.isChecked)
         pinLabelText.text = if (currentLanguage == AppLanguage.PT) {
-            "PIN WI-FI ZERO-TRUST (No Cabo USB a conexão é automática sem PIN)"
+            "PIN DE SEGURANÇA (USB e Wi-Fi local conectam automaticamente sem PIN)"
         } else {
-            "ZERO-TRUST WI-FI PIN (USB Cable connects automatically without PIN)"
+            "SECURITY PIN (USB & Local Wi-Fi connect automatically without PIN)"
         }
         rotatePinBtn.text = if (currentLanguage == AppLanguage.PT) {
             "Gerar Novo PIN (Desconectar Outros)"
@@ -170,10 +171,10 @@ class MainActivity : Activity() {
     }
 
     private fun toggleLanguage() {
-        currentLanguage = if (currentLanguage == AppLanguage.PT) AppLanguage.EN else AppLanguage.PT
+        currentLanguage = if (currentLanguage == AppLanguage.EN) AppLanguage.PT else AppLanguage.EN
         getSharedPreferences("cameraphone_prefs", Context.MODE_PRIVATE)
             .edit()
-            .putString("language", currentLanguage.name)
+            .putString("language_v2", currentLanguage.name)
             .apply()
         applyLanguageStrings()
         val msg = if (currentLanguage == AppLanguage.PT) "Idioma alterado para Português" else "Language changed to English"
@@ -215,7 +216,7 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         langToggleBtn = Button(this).apply {
-            text = "🇧🇷 PT"
+            text = "🌐 Language: EN"
             textSize = 11f
             setTextColor(Color.parseColor("#38BDF8"))
             typeface = Typeface.DEFAULT_BOLD
@@ -235,7 +236,7 @@ class MainActivity : Activity() {
 
         // 1. Tally Status Banner
         tallyBanner = TextView(this).apply {
-            text = "● AGUARDANDO CONEXÃO (PORTA 4748)"
+            text = "● WAITING FOR CONNECTION (PORT 4748)"
             setTextColor(Color.parseColor("#9AA0A6"))
             textSize = 13f
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
@@ -254,7 +255,7 @@ class MainActivity : Activity() {
 
         // 2. IP & Transport Info Banner
         ipInfoText = TextView(this).apply {
-            text = "📶 IP Wi-Fi: ${detectWifiIpv4()}:4748  |  🔌 Cabo USB: 127.0.0.1:4748"
+            text = "📶 Wi-Fi IP: ${detectWifiIpv4()}:4748  |  🔌 USB Cable: 127.0.0.1:4748"
             setTextColor(Color.parseColor("#00E676"))
             textSize = 12f
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
@@ -274,7 +275,7 @@ class MainActivity : Activity() {
             }
         }
         pinLabelText = TextView(this).apply {
-            text = "PIN WI-FI ZERO-TRUST (No Cabo USB a conexão é automática sem PIN)"
+            text = "SECURITY PIN (USB & Local Wi-Fi connect automatically without PIN)"
             setTextColor(Color.parseColor("#8AB4F8"))
             textSize = 10f
             typeface = Typeface.DEFAULT_BOLD
@@ -287,7 +288,7 @@ class MainActivity : Activity() {
             setPadding(0, dp(4), 0, dp(8))
         }
         rotatePinBtn = Button(this).apply {
-            text = "Gerar Novo PIN (Desconectar Outros)"
+            text = "Generate New PIN (Disconnect Others)"
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#262B33"))
             setOnClickListener {
@@ -307,7 +308,7 @@ class MainActivity : Activity() {
 
         // 4. Transport Security Switch
         usbOnlySwitch = Switch(this).apply {
-            text = "Bloquear Wi-Fi (Permitir Somente Cabo USB)"
+            text = "Block Wi-Fi (Allow USB Cable Only)"
             setTextColor(Color.WHITE)
             textSize = 13f
             isChecked = false
@@ -321,7 +322,7 @@ class MainActivity : Activity() {
 
         // 5. Active Hardware Pipeline Telemetry
         telemetryText = TextView(this).apply {
-            text = "Hardware Pronto • Sem Marca D'água • Controle Remoto 100%"
+            text = "Hardware Ready • Zero Watermark • 100% Remote Control"
             setTextColor(Color.parseColor("#9AA0A6"))
             textSize = 12f
             typeface = Typeface.MONOSPACE
@@ -335,14 +336,14 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         logTitleText = TextView(this).apply {
-            text = "📋 LOGS DE DIAGNÓSTICO EM TEMPO REAL"
+            text = "📋 REAL-TIME DIAGNOSTIC LOGS"
             setTextColor(Color.parseColor("#8AB4F8"))
             textSize = 11f
             typeface = Typeface.DEFAULT_BOLD
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         copyLogBtn = Button(this).apply {
-            text = "Copiar Logs"
+            text = "Copy Logs"
             textSize = 10f
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#262B33"))
@@ -358,7 +359,7 @@ class MainActivity : Activity() {
         rootContainer.addView(logHeaderRow)
 
         logConsoleText = TextView(this).apply {
-            text = "[Log] Inicializando..."
+            text = "[Log] Initializing..."
             setTextColor(Color.parseColor("#CFD8DC"))
             textSize = 10f
             typeface = Typeface.MONOSPACE
@@ -380,7 +381,7 @@ class MainActivity : Activity() {
 
         // 7. OLED Blackout Button
         blackoutBtn = Button(this).apply {
-            text = "Modo Tela Preta OLED (Duplo Toque p/ Sair)"
+            text = "OLED Blackout Mode (Double Tap to Exit)"
             setTextColor(Color.parseColor("#00E676"))
             setBackgroundColor(Color.parseColor("#16191E"))
             setOnClickListener { enableBlackoutOverlay() }

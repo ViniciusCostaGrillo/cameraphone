@@ -49,6 +49,13 @@ public:
     // One-click inside OBS Studio: install APK via USB cable, grant CAMERA/RECORD_AUDIO permissions,
     // launch MainActivity on the phone, and activate TCP port 4748 tunnel
     static bool install_apk_and_launch_usb(std::string& out_status_message, uint16_t local_port = 4748, uint16_t remote_port = 4748);
+
+    // Save/load persistent Wi-Fi IP and PIN in %APPDATA%\CameraPhone\wifi_target.cfg
+    static void save_wifi_target(std::string_view ip, std::string_view pin = "");
+    static bool load_wifi_target(std::string& out_ip, std::string& out_pin);
+
+    // Automatic LAN discovery of CameraPhone Android devices over Wi-Fi (UDP 4749 beacon + fast non-blocking TCP 4748 scan)
+    static std::vector<DiscoveredDevice> discover_wifi_devices(uint16_t port = 4748, std::string* out_discovered_pin = nullptr);
 };
 
 } // namespace camphone

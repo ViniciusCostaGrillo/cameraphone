@@ -233,7 +233,19 @@ struct CameraPhoneSourceContext {
             }
             DiscoveryManager::ensure_usb_tunnel_ready(config.port, config.port, true);
         } else {
-            if (config.pin.length() != 6) {
+            if (config.host.empty() || config.host == "192.168.1.100") {
+                std::string disc_pin;
+                auto wifi_devs = DiscoveryManager::discover_wifi_devices(config.port, &disc_pin);
+                if (!wifi_devs.empty()) {
+                    config.host = wifi_devs.front().host;
+                }
+                if (config.pin.empty() && !disc_pin.empty()) {
+                    config.pin = disc_pin;
+                }
+            }
+            if (config.pin.empty()) {
+                config.pin = "usb-zero-config";
+            } else if (config.pin != "usb-zero-config" && config.pin.length() != 6) {
                 DiagnosticLogger::info("OBS-Source", "Wi-Fi PIN incomplete (" + std::to_string(config.pin.length()) + "/6 digits). Awaiting complete PIN.");
                 return;
             }
@@ -353,17 +365,19 @@ struct CameraPhoneSourceContext {
 };
 
 static const char* source_get_name(void*) {
-    return "CameraPhone 4K Pro (Cabo USB / Wi-Fi IP)";
+    return "CameraPhone 4K Pro (USB Cable / Wi-Fi IP)";
 }
 
 static void source_get_defaults(obs_data_t* settings) {
     auto& api = ObsApi::instance();
     if (!api.obs_data_set_default_string) return;
-    api.obs_data_set_default_string(settings, "ui_language", "pt");
+    std::string saved_ip, saved_pin;
+    DiscoveryManager::load_wifi_target(saved_ip, saved_pin);
+    api.obs_data_set_default_string(settings, "ui_language", "en");
     api.obs_data_set_default_string(settings, "conn_mode", "usb");
     api.obs_data_set_default_string(settings, "usb_device", "127.0.0.1");
-    api.obs_data_set_default_string(settings, "wifi_ip", "192.168.1.100");
-    api.obs_data_set_default_string(settings, "pin", "");
+    api.obs_data_set_default_string(settings, "wifi_ip", saved_ip.empty() ? "192.168.1.100" : saved_ip.c_str());
+    api.obs_data_set_default_string(settings, "pin", saved_pin.c_str());
     api.obs_data_set_default_string(settings, "resolution", "1920x1080");
     api.obs_data_set_default_string(settings, "fps", "60");
     api.obs_data_set_default_string(settings, "codec", "hevc");
@@ -476,87 +490,87 @@ static obs_properties_t* source_get_properties(void* data) {
     auto* ctx = static_cast<CameraPhoneSourceContext*>(data);
     obs_properties_t* props = api.obs_properties_create();
 
-    // 0. Language Selector (Português / English)
+    // 0. Language Selector (English / Português)
     auto* lang_list = api.obs_properties_add_list(
-        props, "ui_language", "Idioma / Language", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
-    api.obs_property_list_add_string(lang_list, "🇧🇷 Portugues", "pt");
+        props, "ui_language", "Language / Idioma", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
     api.obs_property_list_add_string(lang_list, "🇺🇸 English", "en");
+    api.obs_property_list_add_string(lang_list, "🇧🇷 Portugues", "pt");
 
     // 1. Connection Mode Selector (USB Cable vs Wi-Fi IP)
     auto* mode_list = api.obs_properties_add_list(
-        props, "conn_mode", "Modo de Conexao / Connection Mode", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
-    api.obs_property_list_add_string(mode_list, "Cabo USB / USB Cable (Zero-Config)", "usb");
-    api.obs_property_list_add_string(mode_list, "Wi-Fi (Conectar por IP / Connect by IP)", "wifi");
+        props, "conn_mode", "Connection Mode / Modo de Conexao", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+    api.obs_property_list_add_string(mode_list, "USB Cable / Cabo USB (Zero-Config)", "usb");
+    api.obs_property_list_add_string(mode_list, "Wi-Fi (Auto-Discovery / Connect by IP)", "wifi");
     if (api.obs_property_set_modified_callback2) {
         api.obs_property_set_modified_callback2(mode_list, on_conn_mode_modified, ctx);
     }
 
     // 2. USB Device Dropdown
     auto* dev_list = api.obs_properties_add_list(
-        props, "usb_device", "Celular no Cabo USB", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+        props, "usb_device", "USB Phone / Celular no Cabo USB", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
     auto usb_devs = DiscoveryManager::list_usb_devices(4748, 4748);
     if (usb_devs.empty()) {
-        api.obs_property_list_add_string(dev_list, "Automatico via Cabo USB (127.0.0.1)", "127.0.0.1");
+        api.obs_property_list_add_string(dev_list, "Automatic via USB Cable (127.0.0.1)", "127.0.0.1");
     } else {
         for (const auto& d : usb_devs) {
             api.obs_property_list_add_string(dev_list, d.display_name.c_str(), d.host.c_str());
         }
     }
 
-    // 3. One-Click "Instalar APK" Button (Only via USB Cable)
+    // 3. One-Click "Install APK" Button (Only via USB Cable)
     if (api.obs_properties_add_button2) {
         api.obs_properties_add_button2(
-            props, "btn_install_apk", "Instalar APK no Celular (Somente via Cabo USB)",
+            props, "btn_install_apk", "Install APK on Phone (USB Cable) / Instalar APK",
             on_install_apk_clicked, ctx);
     }
 
     // 4. Wi-Fi IP & PIN fields (Shown when Wi-Fi mode is selected)
-    api.obs_properties_add_text(props, "wifi_ip", "IP do Celular (Wi-Fi)", OBS_TEXT_DEFAULT);
-    api.obs_properties_add_text(props, "pin", "PIN de Seguranca Wi-Fi (6 digitos no App)", OBS_TEXT_PASSWORD);
+    api.obs_properties_add_text(props, "wifi_ip", "Phone Wi-Fi IP / IP do Celular", OBS_TEXT_DEFAULT);
+    api.obs_properties_add_text(props, "pin", "Wi-Fi Security PIN (Optional on local LAN)", OBS_TEXT_PASSWORD);
 
     // 5. Connect / Refresh Button + Diagnostic Logs Button
     if (api.obs_properties_add_button2) {
         api.obs_properties_add_button2(
-            props, "btn_connect", "Conectar / Atualizar Camera Agora",
+            props, "btn_connect", "Connect / Refresh Camera / Conectar Agora",
             on_connect_refresh_clicked, ctx);
         api.obs_properties_add_button2(
-            props, "btn_logs", "Ver Logs de Diagnostico (PC + Celular)",
+            props, "btn_logs", "View Diagnostic Logs (PC + Phone) / Ver Logs",
             on_show_logs_clicked, ctx);
     }
 
     // 6. Camera Hardware & Lens Controls
-    auto* lens_list = api.obs_properties_add_list(props, "lens", "Lente Fisica", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+    auto* lens_list = api.obs_properties_add_list(props, "lens", "Physical Lens / Lente Fisica", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
     if (ctx && !ctx->capabilities.lenses.empty()) {
         for (const auto& l : ctx->capabilities.lenses) {
             api.obs_property_list_add_string(lens_list, l.label.c_str(), l.id.c_str());
         }
     } else {
-        api.obs_property_list_add_string(lens_list, "Main Wide (24mm Traseira)", "0");
-        api.obs_property_list_add_string(lens_list, "Ultra-Wide (13mm Traseira)", "2");
-        api.obs_property_list_add_string(lens_list, "Telephoto (70mm+ Traseira)", "3");
-        api.obs_property_list_add_string(lens_list, "Camera Frontal", "1");
+        api.obs_property_list_add_string(lens_list, "Main Wide (24mm Rear)", "0");
+        api.obs_property_list_add_string(lens_list, "Ultra-Wide (13mm Rear)", "2");
+        api.obs_property_list_add_string(lens_list, "Telephoto (70mm+ Rear)", "3");
+        api.obs_property_list_add_string(lens_list, "Front Camera / Selfie", "1");
     }
 
-    auto* res_list = api.obs_properties_add_list(props, "resolution", "Resolucao", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+    auto* res_list = api.obs_properties_add_list(props, "resolution", "Resolution / Resolucao", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
     api.obs_property_list_add_string(res_list, "Full HD 1080p (1920x1080)", "1920x1080");
     api.obs_property_list_add_string(res_list, "QHD 1440p (2560x1440)", "2560x1440");
     api.obs_property_list_add_string(res_list, "4K UHD (3840x2160)", "3840x2160");
 
-    auto* fps_list = api.obs_properties_add_list(props, "fps", "Taxa de Quadros (FPS)", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+    auto* fps_list = api.obs_properties_add_list(props, "fps", "Frame Rate (FPS)", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
     api.obs_property_list_add_string(fps_list, "60 FPS", "60");
     api.obs_property_list_add_string(fps_list, "30 FPS", "30");
     api.obs_property_list_add_string(fps_list, "120 FPS (High-Speed)", "120");
 
-    auto* codec_list = api.obs_properties_add_list(props, "codec", "Codec de Hardware", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+    auto* codec_list = api.obs_properties_add_list(props, "codec", "Hardware Codec / Codec de Hardware", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
     api.obs_property_list_add_string(codec_list, "HEVC (H.265 Hardware)", "hevc");
     api.obs_property_list_add_string(codec_list, "AVC (H.264 Hardware)", "avc");
     api.obs_property_list_add_string(codec_list, "AV1 (Hardware)", "av1");
 
     api.obs_properties_add_bool(props, "hdr", "HDR 10-bit (HLG / BT.2020)");
-    api.obs_properties_add_float_slider(props, "zoom", "Zoom Optico/Hibrido", 1.0, 10.0, 0.1);
-    api.obs_properties_add_int_slider(props, "iso", "ISO Manual", 50, 6400, 50);
-    api.obs_properties_add_int_slider(props, "wb_kelvin", "Balanco de Branco (Kelvin)", 2000, 10000, 100);
-    api.obs_properties_add_bool(props, "torch", "Lanterna / LED Traseiro");
+    api.obs_properties_add_float_slider(props, "zoom", "Optical/Hybrid Zoom", 1.0, 10.0, 0.1);
+    api.obs_properties_add_int_slider(props, "iso", "Manual ISO", 50, 6400, 50);
+    api.obs_properties_add_int_slider(props, "wb_kelvin", "White Balance (Kelvin)", 2000, 10000, 100);
+    api.obs_properties_add_bool(props, "torch", "Flashlight / Rear Torch LED");
 
     return props;
 }
@@ -593,6 +607,12 @@ static void source_update(void* data, obs_data_t* settings) {
             if (c != ' ' && c != '-') clean_pin.push_back(c);
         }
         new_pin = clean_pin;
+        if (!new_host.empty() && new_host != "192.168.1.100") {
+            DiscoveryManager::save_wifi_target(new_host, new_pin.length() == 6 ? new_pin : "");
+        }
+        if (new_pin.empty()) {
+            new_pin = "usb-zero-config";
+        }
     } else {
         new_host = (usb_dev && *usb_dev) ? usb_dev : "127.0.0.1";
         new_pin  = "usb-zero-config";
@@ -620,7 +640,7 @@ static void source_update(void* data, obs_data_t* settings) {
     ctx->config.codec  = new_cdc;
     ctx->config.hdr    = hdr;
 
-    if (new_mode == "wifi" && new_pin.length() != 6) {
+    if (new_mode == "wifi" && new_pin != "usb-zero-config" && new_pin.length() != 6) {
         DiagnosticLogger::info("OBS-Source", "Wi-Fi PIN incomplete (" + std::to_string(new_pin.length()) + "/6 digits). Skipping auto-start.");
         return;
     }

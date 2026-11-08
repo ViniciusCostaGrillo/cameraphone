@@ -29,10 +29,12 @@ namespace fs = std::filesystem;
 #define ID_CHK_OBS        3005
 #define ID_CHK_LAUNCH     3006
 #define ID_PROGRESS_BAR   3007
+#define ID_BTN_LANG       3008
 
 static HWND g_hwnd            = nullptr;
 static HWND g_title_hwnd      = nullptr;
 static HWND g_sub_hwnd        = nullptr;
+static HWND g_btn_lang        = nullptr;
 static HWND g_dir_lbl_hwnd    = nullptr;
 static HWND g_dir_val_hwnd    = nullptr;
 static HWND g_chk_autostart   = nullptr;
@@ -48,6 +50,47 @@ static HBRUSH g_bg_brush      = nullptr;
 static HBRUSH g_card_brush    = nullptr;
 
 static bool g_installation_done = false;
+static bool g_lang_pt           = false;
+
+static void update_installer_language(HWND hwnd) {
+    if (g_lang_pt) {
+        SetWindowTextA(hwnd, "Instalação do CameraPhone 4K Pro");
+        if (g_title_hwnd) SetWindowTextA(g_title_hwnd, "Instalador do CameraPhone 4K Pro");
+        if (g_sub_hwnd) SetWindowTextA(g_sub_hwnd, "Câmera Virtual NVIDIA Broadcast, Servidor USB/Wi-Fi e Plugin OBS");
+        if (g_btn_lang) SetWindowTextA(g_btn_lang, "Language: PT");
+        if (g_dir_lbl_hwnd) SetWindowTextA(g_dir_lbl_hwnd, "Pasta de Destino:");
+        if (g_chk_autostart) SetWindowTextA(g_chk_autostart, "Iniciar automaticamente com o Windows (Fundo / Bandeja)");
+        if (g_chk_desktop) SetWindowTextA(g_chk_desktop, "Criar atalho na Área de Trabalho e Menu Iniciar");
+        if (g_chk_obs) SetWindowTextA(g_chk_obs, "Instalar Plugin nativo no OBS Studio (C:\\Program Files\\obs-studio)");
+        if (g_chk_launch) SetWindowTextA(g_chk_launch, "Iniciar o CameraPhone 4K Pro agora");
+        if (!g_installation_done) {
+            if (g_status_hwnd) SetWindowTextA(g_status_hwnd, "Clique em 'Instalar Agora' para iniciar a instalação rápida.");
+            if (g_btn_install) SetWindowTextA(g_btn_install, "Instalar Agora");
+        } else {
+            if (g_status_hwnd) SetWindowTextA(g_status_hwnd, "Instalação concluída com sucesso!");
+            if (g_btn_install) SetWindowTextA(g_btn_install, "Concluir");
+        }
+        if (g_btn_cancel) SetWindowTextA(g_btn_cancel, "Cancelar");
+    } else {
+        SetWindowTextA(hwnd, "CameraPhone 4K Pro Setup");
+        if (g_title_hwnd) SetWindowTextA(g_title_hwnd, "CameraPhone 4K Pro Setup");
+        if (g_sub_hwnd) SetWindowTextA(g_sub_hwnd, "NVIDIA Broadcast Virtual Camera, USB/Wi-Fi Server & OBS Plugin");
+        if (g_btn_lang) SetWindowTextA(g_btn_lang, "Language: EN");
+        if (g_dir_lbl_hwnd) SetWindowTextA(g_dir_lbl_hwnd, "Destination Folder:");
+        if (g_chk_autostart) SetWindowTextA(g_chk_autostart, "Start automatically with Windows (Background / System Tray)");
+        if (g_chk_desktop) SetWindowTextA(g_chk_desktop, "Create Desktop and Start Menu shortcuts");
+        if (g_chk_obs) SetWindowTextA(g_chk_obs, "Install native OBS Studio Plugin (C:\\Program Files\\obs-studio)");
+        if (g_chk_launch) SetWindowTextA(g_chk_launch, "Launch CameraPhone 4K Pro now");
+        if (!g_installation_done) {
+            if (g_status_hwnd) SetWindowTextA(g_status_hwnd, "Click 'Install Now' to begin the quick installation.");
+            if (g_btn_install) SetWindowTextA(g_btn_install, "Install Now");
+        } else {
+            if (g_status_hwnd) SetWindowTextA(g_status_hwnd, "Installation completed successfully!");
+            if (g_btn_install) SetWindowTextA(g_btn_install, "Finish");
+        }
+        if (g_btn_cancel) SetWindowTextA(g_btn_cancel, "Cancel");
+    }
+}
 
 static bool is_elevated() {
     BOOL elevated = FALSE;
@@ -130,12 +173,12 @@ static void deploy_uninstaller_and_register(const fs::path& target_dir) {
             RegSetValueExA(hKey, name, 0, REG_SZ, reinterpret_cast<const BYTE*>(val.c_str()), static_cast<DWORD>(val.length() + 1));
         };
         set_str("DisplayName", "CameraPhone 4K Pro");
-        set_str("DisplayVersion", "1.3.2");
+        set_str("DisplayVersion", "1.4.0");
         set_str("Publisher", "CameraPhone Team");
         set_str("InstallLocation", target_dir.string());
         set_str("DisplayIcon", (target_dir / "CameraPhone.exe").string());
-        set_str("UninstallString", "\"" + uninst_pt.string() + "\" --uninstall");
-        set_str("QuietUninstallString", "\"" + uninst_pt.string() + "\" --uninstall /S");
+        set_str("UninstallString", "\"" + uninst_en.string() + "\" --uninstall");
+        set_str("QuietUninstallString", "\"" + uninst_en.string() + "\" --uninstall /S");
         DWORD no_modify = 1;
         RegSetValueExA(hKey, "NoModify", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&no_modify), sizeof(DWORD));
         RegSetValueExA(hKey, "NoRepair", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&no_modify), sizeof(DWORD));
@@ -147,8 +190,8 @@ static int perform_uninstallation(bool silent) {
     if (!silent) {
         int resp = MessageBoxA(
             nullptr,
-            "Deseja desinstalar completamente o CameraPhone 4K Pro, a Câmera Virtual DirectShow (NVIDIA Broadcast) e o Plugin do OBS Studio?",
-            "Desinstalar CameraPhone 4K Pro",
+            "Do you want to completely uninstall CameraPhone 4K Pro, the DirectShow Virtual Camera (NVIDIA Broadcast), and the OBS Studio Plugin?\n\n(Deseja desinstalar completamente o CameraPhone 4K Pro?)",
+            "Uninstall CameraPhone 4K Pro",
             MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2
         );
         if (resp != IDYES) {
@@ -211,8 +254,8 @@ static int perform_uninstallation(bool silent) {
     if (!silent) {
         MessageBoxA(
             nullptr,
-            "O CameraPhone 4K Pro foi desinstalado com sucesso do seu computador.",
-            "Desinstalação Concluída",
+            "CameraPhone 4K Pro has been uninstalled successfully.\n\n(O CameraPhone 4K Pro foi desinstalado com sucesso.)",
+            "Uninstall Complete",
             MB_OK | MB_ICONINFORMATION
         );
     }
@@ -282,7 +325,9 @@ static void perform_installation() {
         if (g_progress_hwnd) SendMessageA(g_progress_hwnd, PBM_SETPOS, static_cast<WPARAM>(progress), 0);
     };
 
-    set_status("Extraindo arquivos em C:\\Program Files\\CameraPhone...", 20);
+    set_status(g_lang_pt
+        ? "Extraindo arquivos em C:\\Program Files\\CameraPhone..."
+        : "Extracting files to C:\\Program Files\\CameraPhone...", 20);
 
     // Ensure running instances of CameraPhone.exe or adb.exe are closed before overwriting files
     system("taskkill /F /IM CameraPhone.exe >nul 2>&1");
@@ -291,13 +336,17 @@ static void perform_installation() {
 
     const fs::path target_dir = R"(C:\Program Files\CameraPhone)";
     if (!extract_payload_to(target_dir)) {
-        set_status("Erro ao extrair pacote de instalação.", 0);
+        set_status(g_lang_pt
+            ? "Erro ao extrair pacote de instalação."
+            : "Error extracting installation package.", 0);
         EnableWindow(g_btn_install, TRUE);
         EnableWindow(g_btn_cancel, TRUE);
         return;
     }
 
-    set_status("Registrando Câmera Virtual DirectShow (NVIDIA Broadcast)...", 45);
+    set_status(g_lang_pt
+        ? "Registrando Câmera Virtual DirectShow (NVIDIA Broadcast)..."
+        : "Registering DirectShow Virtual Camera (NVIDIA Broadcast)...", 45);
     const fs::path vcam_dll = target_dir / "cameraphone-vcam.dll";
     if (fs::exists(vcam_dll)) {
         std::string reg_cmd = "regsvr32.exe /s \"" + vcam_dll.string() + "\"";
@@ -307,7 +356,9 @@ static void perform_installation() {
     // OBS Studio Plugin check
     const bool install_obs = (SendMessageA(g_chk_obs, BM_GETCHECK, 0, 0) == BST_CHECKED);
     if (install_obs) {
-        set_status("Configurando plugin no OBS Studio...", 65);
+        set_status(g_lang_pt
+            ? "Configurando plugin no OBS Studio..."
+            : "Configuring OBS Studio plugin...", 65);
         const fs::path obs_root = R"(C:\Program Files\obs-studio)";
         const fs::path obs_plugins_dir = obs_root / "obs-plugins" / "64bit";
         const fs::path obs_data_dir = obs_root / "data" / "obs-plugins" / "cameraphone";
@@ -340,7 +391,9 @@ static void perform_installation() {
     // Desktop & Start Menu Shortcuts
     const bool make_desktop = (SendMessageA(g_chk_desktop, BM_GETCHECK, 0, 0) == BST_CHECKED);
     if (make_desktop) {
-        set_status("Criando atalhos na Área de Trabalho e Menu Iniciar...", 80);
+        set_status(g_lang_pt
+            ? "Criando atalhos na Área de Trabalho e Menu Iniciar..."
+            : "Creating Desktop and Start Menu shortcuts...", 80);
         CoInitialize(nullptr);
 
         char desk_path[MAX_PATH]{};
@@ -361,16 +414,20 @@ static void perform_installation() {
     // Windows Autostart on Boot
     const bool autostart = (SendMessageA(g_chk_autostart, BM_GETCHECK, 0, 0) == BST_CHECKED);
     if (autostart) {
-        set_status("Configurando inicialização automática com o Windows...", 90);
+        set_status(g_lang_pt
+            ? "Configurando inicialização automática com o Windows..."
+            : "Configuring Windows autostart...", 90);
         set_autostart_registry(target_dir / "CameraPhone.exe");
     }
 
     deploy_uninstaller_and_register(target_dir);
 
-    set_status("Instalação concluída com sucesso!", 100);
+    set_status(g_lang_pt
+        ? "Instalação concluída com sucesso!"
+        : "Installation completed successfully!", 100);
 
     g_installation_done = true;
-    SetWindowTextA(g_btn_install, "Concluir");
+    SetWindowTextA(g_btn_install, g_lang_pt ? "Concluir" : "Finish");
     EnableWindow(g_btn_install, TRUE);
     ShowWindow(g_btn_cancel, SW_HIDE);
     ShowWindow(g_chk_launch, SW_SHOW);
@@ -404,16 +461,21 @@ static LRESULT CALLBACK InstallerWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPA
         }
 
         // Header
-        g_title_hwnd = CreateWindowExA(0, "STATIC", "Instalador do CameraPhone 4K Pro",
-                                       WS_CHILD | WS_VISIBLE, 24, 18, 500, 28, hwnd, nullptr, nullptr, nullptr);
+        g_title_hwnd = CreateWindowExA(0, "STATIC", "CameraPhone 4K Pro Setup",
+                                       WS_CHILD | WS_VISIBLE, 24, 18, 410, 28, hwnd, nullptr, nullptr, nullptr);
         SendMessageA(g_title_hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font_title), TRUE);
 
-        g_sub_hwnd = CreateWindowExA(0, "STATIC", "Câmera Virtual NVIDIA Broadcast, Servidor USB e Plugin OBS",
-                                     WS_CHILD | WS_VISIBLE, 24, 46, 500, 20, hwnd, nullptr, nullptr, nullptr);
+        g_sub_hwnd = CreateWindowExA(0, "STATIC", "NVIDIA Broadcast Virtual Camera, USB/Wi-Fi Server & OBS Plugin",
+                                     WS_CHILD | WS_VISIBLE, 24, 46, 430, 20, hwnd, nullptr, nullptr, nullptr);
         SendMessageA(g_sub_hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font_sub), TRUE);
 
+        g_btn_lang = CreateWindowExA(0, "BUTTON", "Language: EN",
+                                     WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                                     456, 18, 100, 28, hwnd, reinterpret_cast<HMENU>(ID_BTN_LANG), nullptr, nullptr);
+        SendMessageA(g_btn_lang, WM_SETFONT, reinterpret_cast<WPARAM>(font_ui), TRUE);
+
         // Destination Directory
-        g_dir_lbl_hwnd = CreateWindowExA(0, "STATIC", "Pasta de Destino:",
+        g_dir_lbl_hwnd = CreateWindowExA(0, "STATIC", "Destination Folder:",
                                          WS_CHILD | WS_VISIBLE, 24, 82, 200, 18, hwnd, nullptr, nullptr, nullptr);
         SendMessageA(g_dir_lbl_hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font_ui), TRUE);
 
@@ -423,32 +485,32 @@ static LRESULT CALLBACK InstallerWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPA
         SendMessageA(g_dir_val_hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font_ui), TRUE);
 
         // Options Checkboxes
-        g_chk_autostart = CreateWindowExA(0, "BUTTON", "Iniciar automaticamente com o Windows (Fundo / Bandeja)",
+        g_chk_autostart = CreateWindowExA(0, "BUTTON", "Start automatically with Windows (Background / System Tray)",
                                           WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
                                           24, 142, 532, 24, hwnd, reinterpret_cast<HMENU>(ID_CHK_AUTOSTART), nullptr, nullptr);
         SendMessageA(g_chk_autostart, WM_SETFONT, reinterpret_cast<WPARAM>(font_ui), TRUE);
         SendMessageA(g_chk_autostart, BM_SETCHECK, BST_CHECKED, 0);
 
-        g_chk_desktop = CreateWindowExA(0, "BUTTON", "Criar atalho na Área de Trabalho e Menu Iniciar",
+        g_chk_desktop = CreateWindowExA(0, "BUTTON", "Create Desktop and Start Menu shortcuts",
                                         WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
                                         24, 172, 532, 24, hwnd, reinterpret_cast<HMENU>(ID_CHK_DESKTOP), nullptr, nullptr);
         SendMessageA(g_chk_desktop, WM_SETFONT, reinterpret_cast<WPARAM>(font_ui), TRUE);
         SendMessageA(g_chk_desktop, BM_SETCHECK, BST_CHECKED, 0);
 
-        g_chk_obs = CreateWindowExA(0, "BUTTON", "Instalar Plugin nativo no OBS Studio (C:\\Program Files\\obs-studio)",
+        g_chk_obs = CreateWindowExA(0, "BUTTON", "Install native OBS Studio Plugin (C:\\Program Files\\obs-studio)",
                                     WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
                                     24, 202, 532, 24, hwnd, reinterpret_cast<HMENU>(ID_CHK_OBS), nullptr, nullptr);
         SendMessageA(g_chk_obs, WM_SETFONT, reinterpret_cast<WPARAM>(font_ui), TRUE);
         SendMessageA(g_chk_obs, BM_SETCHECK, BST_CHECKED, 0);
 
         // Post-install launch checkbox (hidden initially)
-        g_chk_launch = CreateWindowExA(0, "BUTTON", "Iniciar o CameraPhone 4K Pro agora",
+        g_chk_launch = CreateWindowExA(0, "BUTTON", "Launch CameraPhone 4K Pro now",
                                        WS_CHILD | BS_AUTOCHECKBOX,
                                        24, 236, 532, 24, hwnd, reinterpret_cast<HMENU>(ID_CHK_LAUNCH), nullptr, nullptr);
         SendMessageA(g_chk_launch, WM_SETFONT, reinterpret_cast<WPARAM>(font_ui), TRUE);
 
         // Status text
-        g_status_hwnd = CreateWindowExA(0, "STATIC", "Clique em 'Instalar Agora' para iniciar a instalação rápida.",
+        g_status_hwnd = CreateWindowExA(0, "STATIC", "Click 'Install Now' to begin the quick installation.",
                                         WS_CHILD | WS_VISIBLE, 24, 268, 532, 20, hwnd, nullptr, nullptr, nullptr);
         SendMessageA(g_status_hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font_ui), TRUE);
 
@@ -460,15 +522,17 @@ static LRESULT CALLBACK InstallerWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPA
         SendMessageA(g_progress_hwnd, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
 
         // Buttons
-        g_btn_install = CreateWindowExA(0, "BUTTON", "Instalar Agora",
+        g_btn_install = CreateWindowExA(0, "BUTTON", "Install Now",
                                         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
                                         316, 332, 130, 36, hwnd, reinterpret_cast<HMENU>(ID_BTN_INSTALL), nullptr, nullptr);
         SendMessageA(g_btn_install, WM_SETFONT, reinterpret_cast<WPARAM>(font_btn), TRUE);
 
-        g_btn_cancel = CreateWindowExA(0, "BUTTON", "Cancelar",
+        g_btn_cancel = CreateWindowExA(0, "BUTTON", "Cancel",
                                        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
                                        456, 332, 100, 36, hwnd, reinterpret_cast<HMENU>(ID_BTN_CANCEL), nullptr, nullptr);
         SendMessageA(g_btn_cancel, WM_SETFONT, reinterpret_cast<WPARAM>(font_ui), TRUE);
+
+        update_installer_language(hwnd);
         return 0;
     }
     case WM_CTLCOLORSTATIC: {
@@ -498,6 +562,11 @@ static LRESULT CALLBACK InstallerWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPA
     }
     case WM_COMMAND: {
         const int id = LOWORD(wparam);
+        if (id == ID_BTN_LANG) {
+            g_lang_pt = !g_lang_pt;
+            update_installer_language(hwnd);
+            return 0;
+        }
         if (id == ID_BTN_CANCEL) {
             DestroyWindow(hwnd);
             return 0;
@@ -620,7 +689,7 @@ int main(int argc, char** argv) {
     RegisterClassA(&wc);
 
     g_hwnd = CreateWindowExA(
-        0, wc.lpszClassName, "Instalação do CameraPhone 4K Pro",
+        0, wc.lpszClassName, "CameraPhone 4K Pro Setup",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         CW_USEDEFAULT, CW_USEDEFAULT, 595, 420,
         nullptr, nullptr, wc.hInstance, nullptr

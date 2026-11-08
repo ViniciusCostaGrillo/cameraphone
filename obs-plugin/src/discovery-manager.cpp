@@ -3,7 +3,9 @@
 #include <array>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <sstream>
 #include <thread>
 #include <chrono>
@@ -12,6 +14,8 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
 #endif
 
@@ -48,6 +52,40 @@ static fs::path get_current_module_dir() {
 #else
     return fs::current_path();
 #endif
+}
+
+static fs::path get_wifi_config_path() {
+    return DiagnosticLogger::log_file_path().parent_path() / "wifi_target.cfg";
+}
+
+void DiscoveryManager::save_wifi_target(std::string_view ip, std::string_view pin) {
+    if (ip.empty() || ip == "127.0.0.1") return;
+    std::string prev_ip, prev_pin;
+    load_wifi_target(prev_ip, prev_pin);
+    std::string final_pin = !pin.empty() ? std::string(pin) : prev_pin;
+
+    std::error_code ec;
+    const fs::path p = get_wifi_config_path();
+    fs::create_directories(p.parent_path(), ec);
+    std::ofstream ofs(p, std::ios::trunc);
+    if (ofs) {
+        ofs << ip << "\n" << final_pin << "\n";
+    }
+}
+
+bool DiscoveryManager::load_wifi_target(std::string& out_ip, std::string& out_pin) {
+    out_ip.clear();
+    out_pin.clear();
+    std::error_code ec;
+    const fs::path p = get_wifi_config_path();
+    if (!fs::exists(p, ec)) return false;
+    std::ifstream ifs(p);
+    if (!ifs) return false;
+    std::getline(ifs, out_ip);
+    std::getline(ifs, out_pin);
+    while (!out_ip.empty() && (out_ip.back() == '\r' || out_ip.back() == '\n' || out_ip.back() == ' ')) out_ip.pop_back();
+    while (!out_pin.empty() && (out_pin.back() == '\r' || out_pin.back() == '\n' || out_pin.back() == ' ')) out_pin.pop_back();
+    return !out_ip.empty();
 }
 
 std::string DiscoveryManager::resolve_adb_path() {
@@ -272,6 +310,23 @@ bool DiscoveryManager::setup_adb_forward(std::string_view serial, uint16_t local
     return ok;
 }
 
+static void cache_usb_device_wifi_ip(std::string_view serial) {
+    std::string out;
+    if (DiscoveryManager::run_adb_command({"-s", std::string(serial), "shell", "ip", "-f", "inet", "addr", "show", "wlan0"}, out, 2500)) {
+        auto pos = out.find("inet ");
+        if (pos != std::string::npos) {
+            pos += 5;
+            auto slash = out.find('/', pos);
+            if (slash != std::string::npos && slash > pos) {
+                std::string ip = out.substr(pos, slash - pos);
+                if (!ip.empty() && ip != "127.0.0.1") {
+                    DiscoveryManager::save_wifi_target(ip);
+                }
+            }
+        }
+    }
+}
+
 std::vector<DiscoveredDevice> DiscoveryManager::list_usb_devices(uint16_t local_port, uint16_t remote_port, std::string* out_hint) {
     std::vector<DiscoveredDevice> out;
     std::string raw_out;
@@ -336,6 +391,7 @@ bool DiscoveryManager::ensure_usb_tunnel_ready(uint16_t local_port, uint16_t rem
         const std::string& serial = devices.front().id;
         std::string dummy;
         run_adb_command({"-s", serial, "shell", "am", "start", "-n", "com.cameraphone.app/.ui.MainActivity"}, dummy, 4000);
+        cache_usb_device_wifi_ip(serial);
     }
     return true;
 }
@@ -371,7 +427,16 @@ bool DiscoveryManager::install_apk_and_launch_usb(std::string& out_status_messag
     std::string install_out;
     bool installed = run_adb_command({"-s", serial, "install", "-r", "-g", apk_path}, install_out, 60000);
     if (!installed && install_out.find("Success") == std::string::npos) {
-        out_status_message = "Falha ao instalar APK via USB (" + serial + "): " + install_out;
+        if (install_out.find("INSTALL_FAILED_UPDATE_INCOMPATIBLE") != std::string::npos ||
+            install_out.find("INSTALL_FAILED_ALREADY_EXISTS") != std::string::npos) {
+            std::string uninst_out;
+            run_adb_command({"-s", serial, "uninstall", "com.cameraphone.app"}, uninst_out, 15000);
+            install_out.clear();
+            installed = run_adb_command({"-s", serial, "install", "-r", "-g", apk_path}, install_out, 60000);
+        }
+    }
+    if (!installed && install_out.find("Success") == std::string::npos) {
+        out_status_message = "Failed to install APK via USB (" + serial + "): " + install_out;
         DiagnosticLogger::error("ADB", out_status_message);
         return false;
     }
@@ -382,10 +447,248 @@ bool DiscoveryManager::install_apk_and_launch_usb(std::string& out_status_messag
     run_adb_command({"-s", serial, "shell", "pm", "grant", "com.cameraphone.app", "android.permission.RECORD_AUDIO"}, dummy, 5000);
     run_adb_command({"-s", serial, "shell", "am", "start", "-n", "com.cameraphone.app/.ui.MainActivity"}, dummy, 5000);
     setup_adb_forward(serial, local_port, remote_port);
+    cache_usb_device_wifi_ip(serial);
 
-    out_status_message = "APK CameraPhone instalado e aberto no celular (" + serial + ")! Tunel USB 127.0.0.1:" + std::to_string(local_port) + " pronto.";
+    out_status_message = "CameraPhone APK installed and opened on phone (" + serial + ")! USB Tunnel 127.0.0.1:" + std::to_string(local_port) + " & Wi-Fi ready.";
     DiagnosticLogger::info("ADB", out_status_message);
     return true;
+}
+
+#ifdef _WIN32
+static bool probe_tcp_port(const std::string& ip, uint16_t port, int timeout_ms) {
+    SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (s == INVALID_SOCKET) return false;
+    u_long nonblock = 1;
+    ioctlsocket(s, FIONBIO, &nonblock);
+
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    if (inet_pton(AF_INET, ip.c_str(), &addr.sin_addr) != 1) {
+        closesocket(s);
+        return false;
+    }
+
+    connect(s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+    fd_set wfds;
+    FD_ZERO(&wfds);
+    FD_SET(s, &wfds);
+    timeval tv{};
+    tv.tv_sec = timeout_ms / 1000;
+    tv.tv_usec = (timeout_ms % 1000) * 1000;
+
+    bool connected = false;
+    if (select(0, nullptr, &wfds, nullptr, &tv) > 0 && FD_ISSET(s, &wfds)) {
+        int so_err = 0;
+        int len = sizeof(so_err);
+        if (getsockopt(s, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&so_err), &len) == 0 && so_err == 0) {
+            connected = true;
+        }
+    }
+    closesocket(s);
+    return connected;
+}
+#endif
+
+std::vector<DiscoveredDevice> DiscoveryManager::discover_wifi_devices(uint16_t port, std::string* out_discovered_pin) {
+    std::vector<DiscoveredDevice> found;
+#ifdef _WIN32
+    WSADATA wsa{};
+    WSAStartup(MAKEWORD(2, 2), &wsa);
+
+    std::string saved_ip, saved_pin;
+    load_wifi_target(saved_ip, saved_pin);
+    if (out_discovered_pin && !saved_pin.empty()) {
+        *out_discovered_pin = saved_pin;
+    }
+
+    // 1. Try UDP Broadcast Probe on port 4749 first (returns IP + PIN + Model in < 60ms if v1.3.4+ APK is running)
+    SOCKET udp = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (udp != INVALID_SOCKET) {
+        BOOL bcast = TRUE;
+        setsockopt(udp, SOL_SOCKET, SO_BROADCAST, reinterpret_cast<const char*>(&bcast), sizeof(bcast));
+        u_long nonblock = 1;
+        ioctlsocket(udp, FIONBIO, &nonblock);
+
+        const char* probe_msg = "CAMPHONE_DISCOVER_V1";
+        sockaddr_in baddr{};
+        baddr.sin_family = AF_INET;
+        baddr.sin_port = htons(4749);
+        baddr.sin_addr.s_addr = INADDR_BROADCAST;
+        sendto(udp, probe_msg, static_cast<int>(std::strlen(probe_msg)), 0, reinterpret_cast<sockaddr*>(&baddr), sizeof(baddr));
+
+        // Also send to subnet broadcast of each local interface
+        char host_name[256]{};
+        if (gethostname(host_name, sizeof(host_name)) == 0) {
+            addrinfo hints{}, *res = nullptr;
+            hints.ai_family = AF_INET;
+            if (getaddrinfo(host_name, nullptr, &hints, &res) == 0 && res) {
+                for (addrinfo* p = res; p != nullptr; p = p->ai_next) {
+                    auto* sin = reinterpret_cast<sockaddr_in*>(p->ai_addr);
+                    uint32_t ip_h = ntohl(sin->sin_addr.s_addr);
+                    if ((ip_h >> 24) == 127 || (ip_h >> 16) == 0xA9FE) continue;
+                    sockaddr_in sub_bcast = baddr;
+                    sub_bcast.sin_addr.s_addr = htonl((ip_h & 0xFFFFFF00u) | 0xFFu);
+                    sendto(udp, probe_msg, static_cast<int>(std::strlen(probe_msg)), 0, reinterpret_cast<sockaddr*>(&sub_bcast), sizeof(sub_bcast));
+                }
+                freeaddrinfo(res);
+            }
+        }
+
+        fd_set rfds;
+        FD_ZERO(&rfds);
+        FD_SET(udp, &rfds);
+        timeval tv{0, 60000}; // 60ms
+        if (select(0, &rfds, nullptr, nullptr, &tv) > 0) {
+            char buf[256]{};
+            sockaddr_in from{};
+            int from_len = sizeof(from);
+            int r = recvfrom(udp, buf, sizeof(buf) - 1, 0, reinterpret_cast<sockaddr*>(&from), &from_len);
+            if (r > 0) {
+                buf[r] = '\0';
+                std::string reply(buf);
+                if (reply.find("CAMPHONE_HERE_V1|") == 0) {
+                    char ip_str[64]{};
+                    inet_ntop(AF_INET, &from.sin_addr, ip_str, sizeof(ip_str));
+                    std::string sender_ip(ip_str);
+
+                    // Format: CAMPHONE_HERE_V1|4748|<pin>|<model>
+                    std::istringstream iss(reply);
+                    std::string magic, port_s, pin_s, model_s;
+                    std::getline(iss, magic, '|');
+                    std::getline(iss, port_s, '|');
+                    std::getline(iss, pin_s, '|');
+                    std::getline(iss, model_s);
+
+                    if (out_discovered_pin && !pin_s.empty()) {
+                        *out_discovered_pin = pin_s;
+                    }
+                    save_wifi_target(sender_ip, pin_s);
+                    found.push_back(DiscoveredDevice{
+                        sender_ip,
+                        "Wi-Fi: " + (model_s.empty() ? sender_ip : model_s) + " (" + sender_ip + ")",
+                        sender_ip,
+                        port,
+                        false
+                    });
+                }
+            }
+        }
+        closesocket(udp);
+    }
+
+    if (!found.empty()) {
+        return found;
+    }
+
+    // 2. Check saved Wi-Fi IP if available (< 40ms)
+    if (!saved_ip.empty() && saved_ip != "127.0.0.1") {
+        if (probe_tcp_port(saved_ip, port, 50)) {
+            found.push_back(DiscoveredDevice{
+                saved_ip,
+                "Wi-Fi: " + saved_ip,
+                saved_ip,
+                port,
+                false
+            });
+            return found;
+        }
+    }
+
+    // 3. Fast parallel non-blocking TCP scan on local /24 subnets (batches of 60 sockets, 70ms per batch)
+    std::vector<std::string> prefixes;
+    std::vector<std::string> self_ips;
+    char host_name[256]{};
+    if (gethostname(host_name, sizeof(host_name)) == 0) {
+        addrinfo hints{}, *res = nullptr;
+        hints.ai_family = AF_INET;
+        if (getaddrinfo(host_name, nullptr, &hints, &res) == 0 && res) {
+            for (addrinfo* p = res; p != nullptr; p = p->ai_next) {
+                auto* sin = reinterpret_cast<sockaddr_in*>(p->ai_addr);
+                char ip_str[64]{};
+                inet_ntop(AF_INET, &sin->sin_addr, ip_str, sizeof(ip_str));
+                std::string ip(ip_str);
+                if (ip.find("127.") == 0 || ip.find("169.254.") == 0) continue;
+                self_ips.push_back(ip);
+                auto last_dot = ip.rfind('.');
+                if (last_dot != std::string::npos) {
+                    std::string prefix = ip.substr(0, last_dot + 1);
+                    // Put non-VMware prefixes (not .5. or .26.) at the front
+                    bool exists = false;
+                    for (const auto& pr : prefixes) if (pr == prefix) exists = true;
+                    if (!exists) {
+                        if (prefix.find("192.168.5.") == 0 || prefix.find("192.168.26.") == 0) {
+                            prefixes.push_back(prefix);
+                        } else {
+                            prefixes.insert(prefixes.begin(), prefix);
+                        }
+                    }
+                }
+            }
+            freeaddrinfo(res);
+        }
+    }
+
+    for (const auto& prefix : prefixes) {
+        for (int start_host = 1; start_host <= 254 && found.empty(); start_host += 60) {
+            int end_host = std::min(254, start_host + 59);
+            std::vector<SOCKET> socks;
+            std::vector<std::string> candidate_ips;
+
+            for (int h = start_host; h <= end_host; ++h) {
+                std::string cand_ip = prefix + std::to_string(h);
+                bool is_self = false;
+                for (const auto& sip : self_ips) if (sip == cand_ip) is_self = true;
+                if (is_self) continue;
+
+                SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+                if (s == INVALID_SOCKET) continue;
+                u_long nonblock = 1;
+                ioctlsocket(s, FIONBIO, &nonblock);
+
+                sockaddr_in addr{};
+                addr.sin_family = AF_INET;
+                addr.sin_port = htons(port);
+                inet_pton(AF_INET, cand_ip.c_str(), &addr.sin_addr);
+                connect(s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+
+                socks.push_back(s);
+                candidate_ips.push_back(cand_ip);
+            }
+
+            if (!socks.empty()) {
+                fd_set wfds;
+                FD_ZERO(&wfds);
+                for (SOCKET s : socks) FD_SET(s, &wfds);
+                timeval tv{0, 75000}; // 75ms per batch of 60 IPs
+                if (select(0, nullptr, &wfds, nullptr, &tv) > 0) {
+                    for (size_t i = 0; i < socks.size(); ++i) {
+                        if (FD_ISSET(socks[i], &wfds)) {
+                            int so_err = 0;
+                            int len = sizeof(so_err);
+                            if (getsockopt(socks[i], SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&so_err), &len) == 0 && so_err == 0) {
+                                save_wifi_target(candidate_ips[i]);
+                                found.push_back(DiscoveredDevice{
+                                    candidate_ips[i],
+                                    "Wi-Fi: " + candidate_ips[i],
+                                    candidate_ips[i],
+                                    port,
+                                    false
+                                });
+                            }
+                        }
+                    }
+                }
+                for (SOCKET s : socks) closesocket(s);
+            }
+        }
+        if (!found.empty()) break;
+    }
+#else
+    (void)port;
+    (void)out_discovered_pin;
+#endif
+    return found;
 }
 
 } // namespace camphone

@@ -18,7 +18,10 @@ class SecurityGateTest {
 
         assertEquals(AuthResult.Authorized, gate.verifyRequest("192.168.1.50", "Bearer $pin"))
         assertEquals(AuthResult.Unauthorized, gate.verifyRequest("192.168.1.50", "Bearer 000000"))
-        assertEquals(AuthResult.Unauthorized, gate.verifyRequest("192.168.1.50", "Bearer usb-zero-config"))
+        assertEquals(AuthResult.Authorized, gate.verifyRequest("192.168.1.50", "Bearer usb-zero-config"))
+        assertEquals(AuthResult.Authorized, gate.verifyRequest("10.0.0.12", "Bearer usb-zero-config"))
+        assertEquals(AuthResult.Authorized, gate.verifyRequest("172.16.5.4", "Bearer usb-zero-config"))
+        assertEquals(AuthResult.Unauthorized, gate.verifyRequest("203.0.113.50", "Bearer usb-zero-config"))
         assertEquals(AuthResult.Authorized, gate.verifyRequest("127.0.0.1", "Bearer usb-zero-config"))
         assertEquals(AuthResult.Authorized, gate.verifyRequest("::1", "Bearer usb-zero-config"))
         assertEquals(AuthResult.Authorized, gate.verifyRequest("::ffff:127.0.0.1", "Bearer usb-zero-config"))
@@ -118,8 +121,9 @@ class SecurityGateTest {
                 assertTrue(statusLine.contains("200"))
             }
 
-            // 4. Wi-Fi LAN IP attempting Bearer usb-zero-config -> MUST be rejected (Unauthorized)
-            assertEquals(AuthResult.Unauthorized, gate.verifyRequest("192.168.1.50", "Bearer usb-zero-config"))
+            // 4. Wi-Fi LAN IP attempting Bearer usb-zero-config -> Authorized (Zero-Config LAN), public WAN IP -> Unauthorized
+            assertEquals(AuthResult.Authorized, gate.verifyRequest("192.168.1.50", "Bearer usb-zero-config"))
+            assertEquals(AuthResult.Unauthorized, gate.verifyRequest("8.8.8.8", "Bearer usb-zero-config"))
 
             // 5. Integrated Diagnostic Logs endpoint (/v1/logs) -> HTTP 200 + JSON logs array
             Socket("127.0.0.1", port).use { s ->
