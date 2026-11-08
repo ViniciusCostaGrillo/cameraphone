@@ -283,8 +283,7 @@ class CamPhoneServer(
         out.flush()
     }
 
-    fun stop() {
-        running.set(false)
+    fun disconnectActiveClient() {
         var shouldStopStream = false
         synchronized(writeLock) {
             if (streamingActive.getAndSet(false) || activeStreamOutput != null || activeStreamSocket != null) {
@@ -300,6 +299,11 @@ class CamPhoneServer(
         if (shouldStopStream) {
             try { onStopStream() } catch (_: Exception) {}
         }
+    }
+
+    fun stop() {
+        running.set(false)
+        disconnectActiveClient()
         try { serverSocket?.close() } catch (_: Exception) {}
         serverSocket = null
     }

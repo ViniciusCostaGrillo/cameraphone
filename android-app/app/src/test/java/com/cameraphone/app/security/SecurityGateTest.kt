@@ -254,4 +254,58 @@ class SecurityGateTest {
             server.stop()
         }
     }
+
+    @Test
+    fun `rotatePin enforces strict PIN on Wi-Fi LAN and disconnectActiveClient kicks active stream`() {
+        val gate = SecurityGate()
+        assertFalse(gate.requirePinOnWifi)
+        assertEquals(AuthResult.Authorized, gate.verifyRequest("192.168.1.50", "Bearer usb-zero-config"))
+
+        val newPin = gate.rotatePin()
+        assertTrue("rotatePin must enforce strict PIN on Wi-Fi LAN", gate.requirePinOnWifi)
+        assertEquals(AuthResult.Unauthorized, gate.verifyRequest("192.168.1.50", "Bearer usb-zero-config"))
+        assertEquals(AuthResult.Authorized, gate.verifyRequest("192.168.1.50", "Bearer $newPin"))
+        assertEquals("USB loopback must still allow usb-zero-config", AuthResult.Authorized, gate.verifyRequest("127.0.0.1", "Bearer usb-zero-config"))
+
+        var activeStreams = 0
+        val server = CamPhoneServer(
+            port = 0,
+            usbOnlyLoopback = true,
+            securityGate = gate,
+            capabilitiesJsonProvider = { "{\"deviceModel\":\"TestPhone\"}" },
+            onStartStream = { _, _, _, _, _, _ -> activeStreams++ },
+            onStopStream = { activeStreams-- },
+            onControlPatch = {},
+            onTallyUpdate = {}
+        )
+        server.start()
+        val port = server.boundPort
+        try {
+            val streamSock = Socket("127.0.0.1", port)
+            streamSock.soTimeout = 1000
+            streamSock.getOutputStream().write("GET /v1/stream?lens=0&res=1920x1080&fps=30&codec=hevc&hdr=0 HTTP/1.1\r\nAuthorization: Bearer $newPin\r\n\r\n".toByteArray())
+            val reader = BufferedReader(InputStreamReader(streamSock.getInputStream()))
+            assertTrue(reader.readLine().contains("200"))
+            while (reader.readLine().isNotEmpty()) {}
+            Thread.sleep(50)
+            assertEquals(1, activeStreams)
+
+            // Kick active client while keeping server listening
+            server.disconnectActiveClient()
+            val closed = try { streamSock.getInputStream().read() == -1 } catch (_: Exception) { true }
+            assertTrue("Active stream socket must be closed by disconnectActiveClient()", closed)
+            Thread.sleep(50)
+            assertEquals(0, activeStreams)
+            streamSock.close()
+
+            // Server must still be listening for new authenticated requests with newPin
+            Socket("127.0.0.1", port).use { s ->
+                s.getOutputStream().write("GET /v1/capabilities HTTP/1.1\r\nAuthorization: Bearer $newPin\r\n\r\n".toByteArray())
+                val statusLine = BufferedReader(InputStreamReader(s.getInputStream())).readLine()
+                assertTrue(statusLine.contains("200"))
+            }
+        } finally {
+            server.stop()
+        }
+    }
 }

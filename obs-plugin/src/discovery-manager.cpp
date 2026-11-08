@@ -62,7 +62,8 @@ void DiscoveryManager::save_wifi_target(std::string_view ip, std::string_view pi
     if (ip.empty() || ip == "127.0.0.1") return;
     std::string prev_ip, prev_pin;
     load_wifi_target(prev_ip, prev_pin);
-    std::string final_pin = !pin.empty() ? std::string(pin) : prev_pin;
+    const bool is_real_pin = (!pin.empty() && pin != "usb-zero-config" && pin != "PIN_REQUIRED");
+    std::string final_pin = is_real_pin ? std::string(pin) : prev_pin;
 
     std::error_code ec;
     const fs::path p = get_wifi_config_path();

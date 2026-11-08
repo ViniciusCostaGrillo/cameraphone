@@ -135,6 +135,13 @@ class CameraStreamService : Service() {
         try { if (wakeLock?.isHeld == true) wakeLock?.release() } catch (_: Exception) {}
     }
 
+    fun rotatePinAndDisconnectOthers(): String {
+        val newPin = securityGate.rotatePin()
+        server?.disconnectActiveClient()
+        AppLogger.warn("Security", "PIN rotated -> Active client evicted and strict Wi-Fi PIN mode enabled.")
+        return newPin
+    }
+
     fun setConnectionArmed(armed: Boolean) {
         isConnectionArmed = armed
         securityGate.connectionEnabled = armed
@@ -154,6 +161,8 @@ class CameraStreamService : Service() {
             onUiStateChange?.invoke("disconnected", false, "Security Lock Active • Zero Open Ports")
         } else {
             AppLogger.info("Security", "Connection ARMED by user: Re-enabling ports 4748/4749 and Camera/Mic access.")
+            securityGate.requirePinOnWifi = false
+            securityGate.resetLockouts()
             acquirePowerAndWifiLocks()
             restartServer(usbOnly = usbOnlyMode)
             try {
@@ -334,7 +343,8 @@ class CameraStreamService : Service() {
                 udpSocket = sock
                 val recvBuf = ByteArray(256)
                 while (udpRunning.get()) {
-                    val payload = "CAMPHONE_HERE_V1|$streamPort|${securityGate.currentPin}|${Build.MANUFACTURER} ${Build.MODEL}"
+                    val beaconToken = if (securityGate.requirePinOnWifi) "PIN_REQUIRED" else "usb-zero-config"
+                    val payload = "CAMPHONE_HERE_V1|$streamPort|$beaconToken|${Build.MANUFACTURER} ${Build.MODEL}"
                     val bytes = payload.toByteArray(Charsets.UTF_8)
                     try {
                         val bcast = DatagramPacket(bytes, bytes.size, InetAddress.getByName("255.255.255.255"), 4749)

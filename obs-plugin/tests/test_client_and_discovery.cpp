@@ -186,12 +186,56 @@ void test_stream_client_handshake_and_steady_streaming() {
     if (server_thread.joinable()) server_thread.join();
 }
 
+void test_http_crlf_sanitization_and_dos_response_ceiling() {
+    assert(StreamClient::sanitize_http_header_value("127.0.0.1\r\nX-Evil: 1") == "127.0.0.1X-Evil: 1");
+    assert(StreamClient::sanitize_http_header_value("123456\nInjected") == "123456Injected");
+
+    WSADATA wsa{};
+    WSAStartup(MAKEWORD(2, 2), &wsa);
+    SOCKET listen_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    assert(listen_sock != INVALID_SOCKET);
+
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = 0;
+    assert(bind(listen_sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0);
+    assert(listen(listen_sock, 1) == 0);
+
+    int addr_len = sizeof(addr);
+    getsockname(listen_sock, reinterpret_cast<sockaddr*>(&addr), &addr_len);
+    uint16_t port = ntohs(addr.sin_port);
+
+    std::thread rogue_server([&]() {
+        SOCKET client_sock = accept(listen_sock, nullptr, nullptr);
+        if (client_sock == INVALID_SOCKET) return;
+        char req_buf[512]{};
+        recv(client_sock, req_buf, sizeof(req_buf), 0);
+        const char* hdr = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"deviceModel\":\"";
+        send(client_sock, hdr, static_cast<int>(std::strlen(hdr)), 0);
+        std::string chunk(16384, 'A');
+        for (int i = 0; i < 32; ++i) { // 512 KB > 256 KB ceiling
+            if (send(client_sock, chunk.data(), static_cast<int>(chunk.size()), 0) <= 0) break;
+        }
+        closesocket(client_sock);
+    });
+
+    StreamClient client;
+    DeviceCapabilities caps{};
+    bool ok = client.fetch_capabilities("127.0.0.1", port, "usb-zero-config", caps);
+    assert(ok == false && "Oversized HTTP response (>256KB) must be rejected against memory DoS!");
+
+    closesocket(listen_sock);
+    if (rogue_server.joinable()) rogue_server.join();
+}
+
 int main() {
     test_adb_serial_allowlist_blocks_command_injection();
     test_adb_devices_output_parser_and_direct_createprocess();
     test_capabilities_json_parser();
     test_obs_stream_guard_arbitration_and_client_running_state();
     test_stream_client_handshake_and_steady_streaming();
+    test_http_crlf_sanitization_and_dos_response_ceiling();
     assert(!DiscoveryManager::resolve_adb_path().empty());
     std::cout << "[PASS] OBS Plugin Discovery (CreateProcessA ADB), OBSStreamGuard & StreamClient handshake tests passed.\n";
     return 0;

@@ -113,6 +113,19 @@ static bool recv_exact(socket_t s, uint8_t* dst, size_t len) {
 StreamClient::StreamClient() = default;
 StreamClient::~StreamClient() { stop_streaming(); }
 
+constexpr size_t kMaxHttpResponseBytes = 256 * 1024; // 256 KB Anti-DoS response cap
+
+std::string StreamClient::sanitize_http_header_value(std::string_view raw) {
+    std::string out;
+    out.reserve(raw.size());
+    for (char c : raw) {
+        if (c != '\r' && c != '\n') {
+            out.push_back(c);
+        }
+    }
+    return out;
+}
+
 static std::string extract_json_field(const std::string& src, const std::string& key) {
     std::string pattern = "\"" + key + "\":\"";
     auto pos = src.find(pattern);
@@ -154,10 +167,13 @@ bool StreamClient::fetch_capabilities(const std::string& host, uint16_t port, co
         return false;
     }
 
+    const std::string safe_host = sanitize_http_header_value(host);
+    const std::string safe_pin  = sanitize_http_header_value(pin);
+
     std::ostringstream req;
     req << "GET /v1/capabilities HTTP/1.1\r\n"
-        << "Host: " << host << "\r\n"
-        << "Authorization: Bearer " << pin << "\r\n"
+        << "Host: " << safe_host << "\r\n"
+        << "Authorization: Bearer " << safe_pin << "\r\n"
         << "Connection: close\r\n\r\n";
     std::string rstr = req.str();
     send(s, rstr.data(), static_cast<int>(rstr.size()), 0);
@@ -167,6 +183,11 @@ bool StreamClient::fetch_capabilities(const std::string& host, uint16_t port, co
     int r = 0;
     while ((r = recv(s, buf, sizeof(buf), 0)) > 0) {
         resp.append(buf, static_cast<size_t>(r));
+        if (resp.size() > kMaxHttpResponseBytes) {
+            close_sock(s);
+            DiagnosticLogger::error("StreamClient", "fetch_capabilities aborted: response exceeded 256 KB Anti-DoS ceiling from " + safe_host);
+            return false;
+        }
     }
     close_sock(s);
 
@@ -197,10 +218,13 @@ bool StreamClient::fetch_remote_logs(const std::string& host, uint16_t port, con
         return false;
     }
 
+    const std::string safe_host = sanitize_http_header_value(host);
+    const std::string safe_pin  = sanitize_http_header_value(pin);
+
     std::ostringstream req;
     req << "GET /v1/logs HTTP/1.1\r\n"
-        << "Host: " << host << "\r\n"
-        << "Authorization: Bearer " << pin << "\r\n"
+        << "Host: " << safe_host << "\r\n"
+        << "Authorization: Bearer " << safe_pin << "\r\n"
         << "Connection: close\r\n\r\n";
     std::string rstr = req.str();
     send(s, rstr.data(), static_cast<int>(rstr.size()), 0);
@@ -210,6 +234,11 @@ bool StreamClient::fetch_remote_logs(const std::string& host, uint16_t port, con
     int r = 0;
     while ((r = recv(s, buf, sizeof(buf), 0)) > 0) {
         resp.append(buf, static_cast<size_t>(r));
+        if (resp.size() > kMaxHttpResponseBytes) {
+            close_sock(s);
+            DiagnosticLogger::error("StreamClient", "fetch_remote_logs aborted: response exceeded 256 KB Anti-DoS ceiling from " + safe_host);
+            return false;
+        }
     }
     close_sock(s);
 
@@ -259,10 +288,13 @@ bool StreamClient::send_control_patch(const std::string& host, uint16_t port, co
     socket_t s = connect_with_timeout(host, port, 1000);
     if (s == kInvalidSocket) return false;
 
+    const std::string safe_host = sanitize_http_header_value(host);
+    const std::string safe_pin  = sanitize_http_header_value(pin);
+
     std::ostringstream req;
     req << "PATCH /v1/control HTTP/1.1\r\n"
-        << "Host: " << host << "\r\n"
-        << "Authorization: Bearer " << pin << "\r\n"
+        << "Host: " << safe_host << "\r\n"
+        << "Authorization: Bearer " << safe_pin << "\r\n"
         << "Content-Type: application/json\r\n"
         << "Content-Length: " << json_patch.size() << "\r\n"
         << "Connection: close\r\n\r\n"
@@ -277,11 +309,15 @@ bool StreamClient::send_tally_state(const std::string& host, uint16_t port, cons
     socket_t s = connect_with_timeout(host, port, 1000);
     if (s == kInvalidSocket) return false;
 
-    std::string body = "{\"state\":\"" + state + "\"}";
+    const std::string safe_host  = sanitize_http_header_value(host);
+    const std::string safe_pin   = sanitize_http_header_value(pin);
+    const std::string safe_state = sanitize_http_header_value(state);
+
+    std::string body = "{\"state\":\"" + safe_state + "\"}";
     std::ostringstream req;
     req << "PUT /v1/tally HTTP/1.1\r\n"
-        << "Host: " << host << "\r\n"
-        << "Authorization: Bearer " << pin << "\r\n"
+        << "Host: " << safe_host << "\r\n"
+        << "Authorization: Bearer " << safe_pin << "\r\n"
         << "Content-Type: application/json\r\n"
         << "Content-Length: " << body.size() << "\r\n"
         << "Connection: close\r\n\r\n"
@@ -297,6 +333,10 @@ void StreamClient::start_streaming(const StreamConfig& cfg, BoundedFrameQueue& v
     running_.store(true);
     worker_ = std::thread([this, cfg, &video_queue, &audio_queue]() {
         uint64_t rx_packets = 0;
+        const std::string safe_host  = sanitize_http_header_value(cfg.host);
+        const std::string safe_pin   = sanitize_http_header_value(cfg.pin);
+        const std::string safe_lens  = sanitize_http_header_value(cfg.lens);
+        const std::string safe_codec = sanitize_http_header_value(cfg.codec);
         while (running_.load()) {
             socket_t s = connect_with_timeout(cfg.host, cfg.port, 2500);
             if (s == kInvalidSocket) {
@@ -312,14 +352,14 @@ void StreamClient::start_streaming(const StreamConfig& cfg, BoundedFrameQueue& v
             }
 
             std::ostringstream req;
-            req << "GET /v1/stream?lens=" << cfg.lens
+            req << "GET /v1/stream?lens=" << safe_lens
                 << "&res=" << cfg.width << "x" << cfg.height
                 << "&fps=" << cfg.fps
-                << "&codec=" << cfg.codec
+                << "&codec=" << safe_codec
                 << "&hdr=" << (cfg.hdr ? "1" : "0")
                 << " HTTP/1.1\r\n"
-                << "Host: " << cfg.host << "\r\n"
-                << "Authorization: Bearer " << cfg.pin << "\r\n\r\n";
+                << "Host: " << safe_host << "\r\n"
+                << "Authorization: Bearer " << safe_pin << "\r\n\r\n";
             std::string rstr = req.str();
             if (send(s, rstr.data(), static_cast<int>(rstr.size()), 0) <= 0) {
                 close_sock(s);

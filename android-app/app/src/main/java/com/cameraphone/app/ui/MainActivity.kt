@@ -384,9 +384,14 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#262B33"))
             setOnClickListener {
-                val newPin = streamService?.securityGate?.rotatePin() ?: return@setOnClickListener
+                val newPin = streamService?.rotatePinAndDisconnectOthers() ?: return@setOnClickListener
                 pinValueText.text = newPin.chunked(3).joinToString(" ")
-                AppLogger.info("UI", "PIN rotated by user")
+                val msg = if (currentLanguage == AppLanguage.PT) {
+                    "Novo PIN gerado! Clientes desconectados e PIN exigido no Wi-Fi."
+                } else {
+                    "New PIN generated! Clients disconnected and PIN required on Wi-Fi."
+                }
+                Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
             }
         }
         pinCard.addView(pinLabelText)

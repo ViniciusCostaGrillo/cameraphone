@@ -48,11 +48,15 @@ class SecurityGate(
     @Volatile
     var connectionEnabled: Boolean = true
 
+    @Volatile
+    var requirePinOnWifi: Boolean = false
+
     private data class AttemptRecord(val failures: Int, val lockedUntilMs: Long)
     private val ipAttempts = ConcurrentHashMap<String, AttemptRecord>()
 
     fun rotatePin(): String {
         currentPin = generateSixDigitPin()
+        requirePinOnWifi = true
         ipAttempts.clear()
         onPinChanged?.invoke(currentPin)
         return currentPin
@@ -95,7 +99,7 @@ class SecurityGate(
                            remoteIp.startsWith("fe80:", ignoreCase = true) ||
                            remoteIp.startsWith("fc", ignoreCase = true) ||
                            remoteIp.startsWith("fd", ignoreCase = true)
-        if (isPrivateLan && candidate == "usb-zero-config") {
+        if ((isLoopback || (!requirePinOnWifi && isPrivateLan)) && candidate == "usb-zero-config") {
             ipAttempts.remove(remoteIp)
             return AuthResult.Authorized
         }

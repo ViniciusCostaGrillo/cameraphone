@@ -120,15 +120,32 @@ static bool install_zero_config_bundle(std::string& out_msg, bool allow_uac_prom
         R"(C:\Cameraphone Plugin OBS\cameraphone-vcam.dll)"
     });
     if (!vcam_src.empty()) {
+        auto run_sys32_regsvr32 = [](const fs::path& dll_path) {
+            char sys_dir[MAX_PATH]{};
+            GetSystemDirectoryA(sys_dir, MAX_PATH);
+            fs::path regsvr = fs::path(sys_dir) / "regsvr32.exe";
+            std::string cmd = "\"" + regsvr.string() + "\" /s \"" + dll_path.string() + "\"";
+            std::vector<char> cmd_buf(cmd.begin(), cmd.end());
+            cmd_buf.push_back('\0');
+            STARTUPINFOA si{};
+            si.cb = sizeof(si);
+            si.dwFlags = STARTF_USESHOWWINDOW;
+            si.wShowWindow = SW_HIDE;
+            PROCESS_INFORMATION pi{};
+            if (CreateProcessA(regsvr.string().c_str(), cmd_buf.data(), nullptr, nullptr, FALSE,
+                               CREATE_NO_WINDOW, nullptr, sys_dir, &si, &pi)) {
+                WaitForSingleObject(pi.hProcess, 10000);
+                CloseHandle(pi.hThread);
+                CloseHandle(pi.hProcess);
+            }
+        };
         const fs::path vcam_dst = obs_plugins_dir / "cameraphone-vcam.dll";
         std::error_code vcam_ec;
         fs::copy_file(vcam_src, vcam_dst, fs::copy_options::overwrite_existing, vcam_ec);
         if (!vcam_ec) {
-            std::string reg_cmd = "regsvr32.exe /s \"" + vcam_dst.string() + "\"";
-            system(reg_cmd.c_str());
+            run_sys32_regsvr32(vcam_dst);
         } else if (!fs::exists(vcam_dst)) {
-            std::string reg_cmd = "regsvr32.exe /s \"" + vcam_src.string() + "\"";
-            system(reg_cmd.c_str());
+            run_sys32_regsvr32(vcam_src);
         }
     }
 

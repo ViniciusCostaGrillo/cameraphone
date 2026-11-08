@@ -186,6 +186,30 @@ static void deploy_uninstaller_and_register(const fs::path& target_dir) {
     }
 }
 
+static bool run_sys32_exe(const std::string& exe_name, const std::string& args, DWORD timeout_ms = 15000) {
+    char sys_dir[MAX_PATH]{};
+    GetSystemDirectoryA(sys_dir, MAX_PATH);
+    fs::path full_exe = fs::path(sys_dir) / exe_name;
+    std::string cmd = "\"" + full_exe.string() + "\" " + args;
+    std::vector<char> cmd_buf(cmd.begin(), cmd.end());
+    cmd_buf.push_back('\0');
+    STARTUPINFOA si{};
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+    PROCESS_INFORMATION pi{};
+    if (!CreateProcessA(full_exe.string().c_str(), cmd_buf.data(), nullptr, nullptr, FALSE,
+                        CREATE_NO_WINDOW, nullptr, sys_dir, &si, &pi)) {
+        return false;
+    }
+    WaitForSingleObject(pi.hProcess, timeout_ms);
+    DWORD exit_code = 1;
+    GetExitCodeProcess(pi.hProcess, &exit_code);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return exit_code == 0;
+}
+
 static int perform_uninstallation(bool silent) {
     if (!silent) {
         int resp = MessageBoxA(
@@ -199,8 +223,8 @@ static int perform_uninstallation(bool silent) {
         }
     }
 
-    // 1. Stop running CameraPhone.exe daemon
-    system("taskkill /F /IM CameraPhone.exe >nul 2>&1");
+    // 1. Stop running CameraPhone.exe daemon safely via System32\taskkill.exe
+    run_sys32_exe("taskkill.exe", "/F /IM CameraPhone.exe");
     Sleep(400);
 
     const fs::path target_dir = R"(C:\Program Files\CameraPhone)";
@@ -208,14 +232,12 @@ static int perform_uninstallation(bool silent) {
     const fs::path obs_plugins_dir = obs_root / "obs-plugins" / "64bit";
     const fs::path obs_data_dir = obs_root / "data" / "obs-plugins" / "cameraphone";
 
-    // 2. Unregister DirectShow Virtual Camera
+    // 2. Unregister DirectShow Virtual Camera safely via System32\regsvr32.exe
     if (fs::exists(target_dir / "cameraphone-vcam.dll")) {
-        std::string cmd = "regsvr32.exe /u /s \"" + (target_dir / "cameraphone-vcam.dll").string() + "\"";
-        system(cmd.c_str());
+        run_sys32_exe("regsvr32.exe", "/u /s \"" + (target_dir / "cameraphone-vcam.dll").string() + "\"");
     }
     if (fs::exists(obs_plugins_dir / "cameraphone-vcam.dll")) {
-        std::string cmd = "regsvr32.exe /u /s \"" + (obs_plugins_dir / "cameraphone-vcam.dll").string() + "\"";
-        system(cmd.c_str());
+        run_sys32_exe("regsvr32.exe", "/u /s \"" + (obs_plugins_dir / "cameraphone-vcam.dll").string() + "\"");
     }
 
     // 3. Remove OBS Studio plugin files
@@ -262,13 +284,16 @@ static int perform_uninstallation(bool silent) {
 
     // 7. Schedule background removal of the uninstaller binary itself and the folder after process exit
     if (fs::exists(target_dir)) {
+        char sys_dir[MAX_PATH]{};
+        GetSystemDirectoryA(sys_dir, MAX_PATH);
+        fs::path cmd_exe = fs::path(sys_dir) / "cmd.exe";
         STARTUPINFOA si{};
         si.cb = sizeof(si);
         PROCESS_INFORMATION pi{};
-        std::string self_del_cmd = "cmd.exe /C timeout /t 2 /nobreak >nul & rmdir /s /q \"" + target_dir.string() + "\"";
+        std::string self_del_cmd = "\"" + cmd_exe.string() + "\" /C timeout /t 2 /nobreak >nul & rmdir /s /q \"" + target_dir.string() + "\"";
         std::vector<char> cmd_buf(self_del_cmd.begin(), self_del_cmd.end());
         cmd_buf.push_back('\0');
-        if (CreateProcessA(nullptr, cmd_buf.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, "C:\\Windows\\System32", &si, &pi)) {
+        if (CreateProcessA(cmd_exe.string().c_str(), cmd_buf.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, sys_dir, &si, &pi)) {
             CloseHandle(pi.hThread);
             CloseHandle(pi.hProcess);
         }
@@ -287,7 +312,8 @@ static bool extract_payload_to(const fs::path& target_dir) {
 
     char temp_dir[MAX_PATH]{};
     GetTempPathA(MAX_PATH, temp_dir);
-    fs::path zip_path = fs::path(temp_dir) / "cameraphone_payload.zip";
+    std::string unique_zip = "cameraphone_payload_" + std::to_string(GetCurrentProcessId()) + "_" + std::to_string(GetTickCount64()) + ".zip";
+    fs::path zip_path = fs::path(temp_dir) / unique_zip;
 
     std::ofstream out(zip_path, std::ios::binary);
     if (!out) return false;
@@ -298,22 +324,21 @@ static bool extract_payload_to(const fs::path& target_dir) {
     fs::create_directories(target_dir, ec);
 
     // Ensure running instances of CameraPhone.exe or adb.exe are closed before overwriting files
-    system("taskkill /F /IM CameraPhone.exe >nul 2>&1");
-    system("taskkill /F /IM adb.exe >nul 2>&1");
+    run_sys32_exe("taskkill.exe", "/F /IM CameraPhone.exe");
+    run_sys32_exe("taskkill.exe", "/F /IM adb.exe");
     Sleep(500);
 
-    // Try extracting with built-in Windows tar.exe (fastest, standard in Win 10/11)
-    std::string tar_cmd = "tar.exe -xf \"" + zip_path.string() + "\" -C \"" + target_dir.string() + "\"";
-    int rc = system(tar_cmd.c_str());
-    if (rc != 0) {
-        // Fallback to PowerShell Expand-Archive
-        std::string ps_cmd = "powershell -NoProfile -Command \"Expand-Archive -Path '" +
-                             zip_path.string() + "' -DestinationPath '" + target_dir.string() + "' -Force\"";
-        rc = system(ps_cmd.c_str());
+    // Extract with built-in System32\tar.exe (standard in Win 10/11)
+    bool ok = run_sys32_exe("tar.exe", "-xf \"" + zip_path.string() + "\" -C \"" + target_dir.string() + "\"", 30000);
+    if (!ok) {
+        // Fallback to System32\WindowsPowerShell\v1.0\powershell.exe Expand-Archive
+        std::string ps_args = "-NoProfile -Command \"Expand-Archive -Path '" +
+                              zip_path.string() + "' -DestinationPath '" + target_dir.string() + "' -Force\"";
+        ok = run_sys32_exe("WindowsPowerShell\\v1.0\\powershell.exe", ps_args, 30000);
     }
 
     fs::remove(zip_path, ec);
-    return (rc == 0);
+    return ok;
 }
 
 static void perform_installation() {
@@ -330,8 +355,8 @@ static void perform_installation() {
         : "Extracting files to C:\\Program Files\\CameraPhone...", 20);
 
     // Ensure running instances of CameraPhone.exe or adb.exe are closed before overwriting files
-    system("taskkill /F /IM CameraPhone.exe >nul 2>&1");
-    system("taskkill /F /IM adb.exe >nul 2>&1");
+    run_sys32_exe("taskkill.exe", "/F /IM CameraPhone.exe");
+    run_sys32_exe("taskkill.exe", "/F /IM adb.exe");
     Sleep(500);
 
     const fs::path target_dir = R"(C:\Program Files\CameraPhone)";
@@ -349,8 +374,7 @@ static void perform_installation() {
         : "Registering DirectShow Virtual Camera (NVIDIA Broadcast)...", 45);
     const fs::path vcam_dll = target_dir / "cameraphone-vcam.dll";
     if (fs::exists(vcam_dll)) {
-        std::string reg_cmd = "regsvr32.exe /s \"" + vcam_dll.string() + "\"";
-        system(reg_cmd.c_str());
+        run_sys32_exe("regsvr32.exe", "/s \"" + vcam_dll.string() + "\"");
     }
 
     // OBS Studio Plugin check
@@ -647,8 +671,7 @@ int main(int argc, char** argv) {
         if (extract_payload_to(target_dir)) {
             const fs::path vcam_dll = target_dir / "cameraphone-vcam.dll";
             if (fs::exists(vcam_dll)) {
-                std::string reg_cmd = "regsvr32.exe /s \"" + vcam_dll.string() + "\"";
-                system(reg_cmd.c_str());
+                run_sys32_exe("regsvr32.exe", "/s \"" + vcam_dll.string() + "\"");
             }
             const fs::path obs_root = R"(C:\Program Files\obs-studio)";
             const fs::path obs_plugins_dir = obs_root / "obs-plugins" / "64bit";

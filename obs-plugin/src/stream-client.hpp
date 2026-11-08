@@ -51,6 +51,7 @@ public:
     StreamClient();
     ~StreamClient();
 
+    static std::string sanitize_http_header_value(std::string_view raw);
     static bool parse_capabilities_json(const std::string& json, DeviceCapabilities& out);
 
     bool fetch_capabilities(const std::string& host, uint16_t port, const std::string& pin, DeviceCapabilities& out);
