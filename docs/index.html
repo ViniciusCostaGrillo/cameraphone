@@ -853,78 +853,6 @@
     }
 
     /* ==========================================================================
-       TECHNICAL COMPARISON MATRIX
-       ========================================================================== */
-    .table-container {
-      border-radius: 28px;
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0.02) 100%);
-      padding: 1px;
-      overflow: hidden;
-      box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.7);
-    }
-
-    .table-inner {
-      border-radius: 27px;
-      background: var(--card-inner);
-      backdrop-filter: blur(20px);
-      overflow-x: auto;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      text-align: left;
-      font-size: 0.94rem;
-      table-layout: fixed;
-    }
-
-    th, td {
-      padding: 18px 24px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-      vertical-align: middle;
-    }
-
-    th {
-      font-family: var(--font-mono);
-      font-size: 0.78rem;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: var(--text-dim);
-      background: rgba(255, 255, 255, 0.02);
-    }
-
-    th.col-highlight {
-      color: var(--accent-cyan);
-      background: rgba(0, 229, 255, 0.04);
-      border-left: 1px solid rgba(0, 229, 255, 0.15);
-      border-right: 1px solid rgba(0, 229, 255, 0.15);
-    }
-
-    td.col-highlight {
-      background: rgba(0, 229, 255, 0.02);
-      border-left: 1px solid rgba(0, 229, 255, 0.12);
-      border-right: 1px solid rgba(0, 229, 255, 0.12);
-      font-weight: 600;
-      color: #fff;
-    }
-
-    .check-positive {
-      color: var(--accent-mint);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .check-negative {
-      color: #ff5252;
-      opacity: 0.85;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    /* ==========================================================================
        SETUP STEPS — Clean 3-Stage Blueprint
        ========================================================================== */
     .steps-grid {
@@ -1369,142 +1297,6 @@
       </div>
     </section>
 
-    <!-- TECHNICAL COMPARISON MATRIX -->
-    <section class="section-spacing">
-      <div class="section-eyebrow" data-lang="en">Objective Technical Comparison</div>
-      <div class="section-eyebrow" data-lang="pt">Comparativo Técnico Objetivo</div>
-
-      <h2 class="section-heading" data-lang="en">Engineered Without Compromise</h2>
-      <h2 class="section-heading" data-lang="pt">Desenvolvido Sem Concessões</h2>
-
-      <p class="section-subheading" data-lang="en">
-        See how CameraPhone 4K Pro compares to commercial legacy solutions like DroidCam, EpocCam, and Iriun.
-      </p>
-      <p class="section-subheading" data-lang="pt">
-        Veja como o CameraPhone 4K Pro se compara às soluções comerciais antigas como DroidCam, EpocCam e Iriun.
-      </p>
-
-      <div class="table-container">
-        <div class="table-inner">
-          <table>
-            <thead>
-              <tr>
-                <th style="width: 28%;">
-                  <span data-lang="en">Feature / Capability</span>
-                  <span data-lang="pt">Recurso / Capacidade</span>
-                </th>
-                <th style="width: 36%;">
-                  <span data-lang="en">Legacy Paid Apps (DroidCam / EpocCam)</span>
-                  <span data-lang="pt">Apps Antigos Pagos (DroidCam / EpocCam)</span>
-                </th>
-                <th class="col-highlight" style="width: 36%;">
-                  <span>CameraPhone 4K Pro</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>
-                  <span data-lang="en">4K UHD (3840x2160) @ 60 FPS</span>
-                  <span data-lang="pt">4K UHD (3840x2160) a 60 FPS</span>
-                </td>
-                <td class="check-negative">
-                  <span data-lang="en">✕ Locked behind monthly subscription</span>
-                  <span data-lang="pt">✕ Bloqueado em assinatura paga</span>
-                </td>
-                <td class="col-highlight check-positive">
-                  <span data-lang="en">✓ 100% Free & Unlocked</span>
-                  <span data-lang="pt">✓ 100% Gratuito e Liberado</span>
-                </td>
-              </tr>
-              <tr>
-                <td>
-                  <span data-lang="en">NVIDIA Broadcast Compatibility</span>
-                  <span data-lang="pt">Compatibilidade NVIDIA Broadcast</span>
-                </td>
-                <td class="check-negative">
-                  <span data-lang="en">✕ Freezes or crashes on 4K resolution</span>
-                  <span data-lang="pt">✕ Trava ou fecha em resolução 4K</span>
-                </td>
-                <td class="col-highlight check-positive">
-                  <span data-lang="en">✓ Native DirectShow NV12 (USB & Wi-Fi)</span>
-                  <span data-lang="pt">✓ DirectShow NV12 Nativo (USB e Wi-Fi)</span>
-                </td>
-              </tr>
-              <tr>
-                <td>
-                  <span data-lang="en">Hardware Codecs</span>
-                  <span data-lang="pt">Codecs de Hardware</span>
-                </td>
-                <td class="check-negative">
-                  <span>✕ MJPEG / Standard H.264 (8-bit)</span>
-                </td>
-                <td class="col-highlight check-positive">
-                  <span>✓ HEVC (H.265) • AV1 • 10-bit HDR</span>
-                </td>
-              </tr>
-              <tr>
-                <td>
-                  <span data-lang="en">OBS Studio Transforms & Crop</span>
-                  <span data-lang="pt">Transformações e Recorte no OBS</span>
-                </td>
-                <td class="check-negative">
-                  <span data-lang="en">✕ Clunky window captures or fixed crops</span>
-                  <span data-lang="pt">✕ Captura de janela sem recorte livre</span>
-                </td>
-                <td class="col-highlight check-positive">
-                  <span data-lang="en">✓ Native 64-bit plugin (Alt-drag, Handles, LUTs)</span>
-                  <span data-lang="pt">✓ Plugin 64-bit nativo (Alt-recorte, Alças, LUTs)</span>
-                </td>
-              </tr>
-              <tr>
-                <td>
-                  <span data-lang="en">Watermarks & Advertisements</span>
-                  <span data-lang="pt">Marcas D'água e Anúncios</span>
-                </td>
-                <td class="check-negative">
-                  <span data-lang="en">✕ Injected video logos unless paid</span>
-                  <span data-lang="pt">✕ Logo injetada no vídeo a menos que pague</span>
-                </td>
-                <td class="col-highlight check-positive">
-                  <span data-lang="en">✓ Zero Watermarks Forever</span>
-                  <span data-lang="pt">✓ Zero Marca D'água para Sempre</span>
-                </td>
-              </tr>
-              <tr>
-                <td>
-                  <span data-lang="en">Multi-Lens (Ultra-Wide, Telephoto, Front)</span>
-                  <span data-lang="pt">Múltiplas Lentes (Ultra-Wide, Tele, Frontal)</span>
-                </td>
-                <td class="check-negative">
-                  <span data-lang="en">✕ Locked or HTTP 550 error</span>
-                  <span data-lang="pt">✕ Bloqueado ou erro HTTP 550</span>
-                </td>
-                <td class="col-highlight check-positive">
-                  <span data-lang="en">✓ All Physical Camera2 Lenses Unlocked</span>
-                  <span data-lang="pt">✓ Todas as Lentes Camera2 Liberadas</span>
-                </td>
-              </tr>
-              <tr>
-                <td>
-                  <span data-lang="en">Source Code & Privacy</span>
-                  <span data-lang="pt">Código Fonte e Privacidade</span>
-                </td>
-                <td class="check-negative">
-                  <span data-lang="en">✕ Closed-source proprietary binaries</span>
-                  <span data-lang="pt">✕ Binários fechados e proprietários</span>
-                </td>
-                <td class="col-highlight check-positive">
-                  <span data-lang="en">✓ 100% Open-Source (C++20 & Kotlin)</span>
-                  <span data-lang="pt">✓ 100% Código Aberto (C++20 & Kotlin)</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
     <!-- 3-STEP QUICK SETUP GUIDE -->
     <section class="section-spacing">
       <div class="section-eyebrow" data-lang="en">Zero Setup Friction</div>
@@ -1594,6 +1386,18 @@
           <a class="btn-nested-secondary" href="https://github.com/ViniciusCostaGrillo/cameraphone" target="_blank" rel="noopener">
             <span>Explore Source on GitHub ↗</span>
           </a>
+        </div>
+
+        <div class="kofi-support-block" style="margin-top: 36px; padding-top: 30px; border-top: 1px solid rgba(255, 255, 255, 0.08); display: flex; flex-direction: column; align-items: center; gap: 14px;">
+          <a href="https://ko-fi.com/viniciuscostagrillo" target="_blank" rel="noopener noreferrer" style="display: inline-block; transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
+            <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Apoie o CameraPhone no Ko-fi" height="36" style="height: 36px; border-radius: 8px;">
+          </a>
+          <p style="color: var(--text-muted); font-size: 0.94rem; max-width: 640px; line-height: 1.6; margin: 0 auto;" data-lang="en">
+            CameraPhone is free and open-source. If it helps you, consider supporting its development, including the Google Play release and future iOS/macOS versions.
+          </p>
+          <p style="color: var(--text-muted); font-size: 0.94rem; max-width: 640px; line-height: 1.6; margin: 0 auto;" data-lang="pt">
+            O CameraPhone é gratuito e open-source. Se ele te ajuda, considere apoiar o desenvolvimento, incluindo a publicação na Google Play e as futuras versões para iOS/macOS.
+          </p>
         </div>
       </div>
     </div>
