@@ -5,9 +5,12 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -143,28 +146,43 @@ public:
     STDMETHODIMP Notify(IBaseFilter*, Quality) override { return S_OK; }
     STDMETHODIMP SetSink(IQualityControl*) override { return S_OK; }
 
+    static constexpr int kNumCapabilities = 8;
+    static constexpr long kMaxSampleBufferBytes = 3840L * 2160L * 2L; // 16.58 MB (safe for up to 4K YUY2/NV12)
+
     bool BuildMediaType(int index, AM_MEDIA_TYPE* pmt);
+    bool CopyCurrentMediaType(AM_MEDIA_TYPE* pmt);
     bool IsConnected() const { return m_pConnectedPin != nullptr; }
     IPin* GetConnectedPin() const { return m_pConnectedPin; }
     IMemInputPin* GetMemInputPin() const { return m_pMemInputPin; }
     IMemAllocator* GetAllocator() const { return m_pAllocator; }
 
-    uint32_t GetCurrentWidth() const { return m_Width; }
-    uint32_t GetCurrentHeight() const { return m_Height; }
-    bool IsYUY2() const { return m_CurrentMediaType.subtype == MEDIASUBTYPE_YUY2_Local; }
-    REFERENCE_TIME GetAvgTimePerFrame() const { return m_AvgTimePerFrame; }
+    void GetCurrentFormatSnapshot(uint32_t& out_w, uint32_t& out_h, bool& out_yuy2, REFERENCE_TIME& out_avg_time) const {
+        std::lock_guard<std::mutex> lock(m_FormatMutex);
+        out_w = m_Width;
+        out_h = m_Height;
+        out_yuy2 = (m_CurrentMediaType.subtype == MEDIASUBTYPE_YUY2_Local);
+        out_avg_time = m_AvgTimePerFrame;
+    }
+
+    uint32_t GetCurrentWidth() const { std::lock_guard<std::mutex> lock(m_FormatMutex); return m_Width; }
+    uint32_t GetCurrentHeight() const { std::lock_guard<std::mutex> lock(m_FormatMutex); return m_Height; }
+    bool IsYUY2() const { std::lock_guard<std::mutex> lock(m_FormatMutex); return m_CurrentMediaType.subtype == MEDIASUBTYPE_YUY2_Local; }
+    REFERENCE_TIME GetAvgTimePerFrame() const { std::lock_guard<std::mutex> lock(m_FormatMutex); return m_AvgTimePerFrame; }
 
 private:
-    std::atomic<LONG> m_cRef{1};
-    CVCamFilter*      m_pFilter = nullptr;
-    IPin*             m_pConnectedPin = nullptr;
-    IMemInputPin*     m_pMemInputPin = nullptr;
-    IMemAllocator*    m_pAllocator = nullptr;
+    void ConfigureAllocatorLocked();
 
-    AM_MEDIA_TYPE     m_CurrentMediaType{};
-    uint32_t          m_Width = 1920;
-    uint32_t          m_Height = 1080;
-    REFERENCE_TIME    m_AvgTimePerFrame = 166666; // 60 FPS
+    std::atomic<LONG>  m_cRef{1};
+    CVCamFilter*       m_pFilter = nullptr;
+    IPin*              m_pConnectedPin = nullptr;
+    IMemInputPin*      m_pMemInputPin = nullptr;
+    IMemAllocator*     m_pAllocator = nullptr;
+
+    mutable std::mutex m_FormatMutex;
+    AM_MEDIA_TYPE      m_CurrentMediaType{};
+    uint32_t           m_Width = 1920;
+    uint32_t           m_Height = 1080;
+    REFERENCE_TIME     m_AvgTimePerFrame = 333333; // 30 FPS default
 };
 
 class CVCamEnumMediaTypes : public IEnumMediaTypes {
@@ -200,7 +218,14 @@ public:
             auto* pmt = static_cast<AM_MEDIA_TYPE*>(CoTaskMemAlloc(sizeof(AM_MEDIA_TYPE)));
             if (!pmt) break;
             std::memset(pmt, 0, sizeof(AM_MEDIA_TYPE));
-            if (!m_pPin->BuildMediaType(m_Index, pmt)) {
+            bool ok = false;
+            if (m_Index == 0) {
+                // Always yield the active m_CurrentMediaType (set via IAMStreamConfig::SetFormat) first!
+                ok = m_pPin->CopyCurrentMediaType(pmt);
+            } else {
+                ok = m_pPin->BuildMediaType(m_Index - 1, pmt);
+            }
+            if (!ok) {
                 CoTaskMemFree(pmt);
                 break;
             }
@@ -380,19 +405,25 @@ bool CVCamOutputPin::BuildMediaType(int index, AM_MEDIA_TYPE* pmt) {
     std::memset(pmt, 0, sizeof(AM_MEDIA_TYPE));
 
     uint32_t w = 1920, h = 1080;
-    REFERENCE_TIME avg_time = 166666; // 60 FPS
+    REFERENCE_TIME avg_time = 333333; // 30 FPS
     GUID subtype = MEDIASUBTYPE_NV12_Local;
 
     switch (index) {
-    case 0: // 1080p60 NV12
+    case 0: // 1080p30 NV12
+        w = 1920; h = 1080; avg_time = 333333; subtype = MEDIASUBTYPE_NV12_Local; break;
+    case 1: // 1080p60 NV12
         w = 1920; h = 1080; avg_time = 166666; subtype = MEDIASUBTYPE_NV12_Local; break;
-    case 1: // 4K60 NV12
-        w = 3840; h = 2160; avg_time = 166666; subtype = MEDIASUBTYPE_NV12_Local; break;
     case 2: // 4K30 NV12
         w = 3840; h = 2160; avg_time = 333333; subtype = MEDIASUBTYPE_NV12_Local; break;
-    case 3: // 720p60 NV12
+    case 3: // 4K60 NV12
+        w = 3840; h = 2160; avg_time = 166666; subtype = MEDIASUBTYPE_NV12_Local; break;
+    case 4: // 720p30 NV12
+        w = 1280; h = 720; avg_time = 333333; subtype = MEDIASUBTYPE_NV12_Local; break;
+    case 5: // 720p60 NV12
         w = 1280; h = 720; avg_time = 166666; subtype = MEDIASUBTYPE_NV12_Local; break;
-    case 4: // 1080p60 YUY2
+    case 6: // 1080p30 YUY2
+        w = 1920; h = 1080; avg_time = 333333; subtype = MEDIASUBTYPE_YUY2_Local; break;
+    case 7: // 1080p60 YUY2
         w = 1920; h = 1080; avg_time = 166666; subtype = MEDIASUBTYPE_YUY2_Local; break;
     default:
         return false;
@@ -423,24 +454,101 @@ bool CVCamOutputPin::BuildMediaType(int index, AM_MEDIA_TYPE* pmt) {
     return true;
 }
 
+bool CVCamOutputPin::CopyCurrentMediaType(AM_MEDIA_TYPE* pmt) {
+    if (!pmt) return false;
+    std::lock_guard<std::mutex> lock(m_FormatMutex);
+    auto* copy = CreateMediaType(&m_CurrentMediaType);
+    if (!copy) return false;
+    std::memcpy(pmt, copy, sizeof(AM_MEDIA_TYPE));
+    CoTaskMemFree(copy);
+    return true;
+}
+
+void CVCamOutputPin::ConfigureAllocatorLocked() {
+    if (!m_pMemInputPin) return;
+
+    long required_bytes = std::max<long>(static_cast<long>(m_CurrentMediaType.lSampleSize), kMaxSampleBufferBytes);
+    ALLOCATOR_PROPERTIES prop{}, actual{};
+    prop.cBuffers = 4;
+    prop.cbBuffer = required_bytes;
+    prop.cbAlign = 1;
+
+    if (!m_pAllocator) {
+        m_pMemInputPin->GetAllocator(&m_pAllocator);
+    }
+
+    bool allocator_ok = false;
+    if (m_pAllocator) {
+        m_pAllocator->Decommit();
+        if (SUCCEEDED(m_pAllocator->SetProperties(&prop, &actual)) &&
+            actual.cbBuffer >= static_cast<long>(m_CurrentMediaType.lSampleSize)) {
+            allocator_ok = true;
+        } else {
+            m_pAllocator->Release();
+            m_pAllocator = nullptr;
+        }
+    }
+
+    if (!allocator_ok) {
+        if (SUCCEEDED(CoCreateInstance(CLSID_MemoryAllocator_Local, nullptr, CLSCTX_INPROC_SERVER,
+                                       IID_IMemAllocator_Local, reinterpret_cast<void**>(&m_pAllocator))) && m_pAllocator) {
+            m_pAllocator->SetProperties(&prop, &actual);
+        }
+    }
+
+    if (m_pAllocator) {
+        m_pMemInputPin->NotifyAllocator(m_pAllocator, FALSE);
+        m_pAllocator->Commit();
+    }
+}
+
 STDMETHODIMP CVCamOutputPin::Connect(IPin* pReceivePin, const AM_MEDIA_TYPE* pmt) {
     if (!pReceivePin) return E_POINTER;
     if (m_pConnectedPin) return VFW_E_ALREADY_CONNECTED;
 
-    AM_MEDIA_TYPE mt{};
-    bool match = false;
     if (pmt) {
-        if (QueryAccept(pmt) == S_OK) {
-            match = true;
-            std::memcpy(&mt, pmt, sizeof(AM_MEDIA_TYPE));
+        if (pmt->majortype != GUID_NULL && pmt->majortype != MEDIATYPE_Video_Local) {
+            return VFW_E_TYPE_NOT_ACCEPTED;
         }
-    } else {
-        BuildMediaType(0, &mt);
-        match = true;
+        if (pmt->subtype != GUID_NULL &&
+            pmt->subtype != MEDIASUBTYPE_NV12_Local &&
+            pmt->subtype != MEDIASUBTYPE_YUY2_Local) {
+            return VFW_E_TYPE_NOT_ACCEPTED;
+        }
+        if (pmt->formattype == FORMAT_VideoInfo_Local && pmt->pbFormat && pmt->cbFormat >= sizeof(VIDEOINFOHEADER)) {
+            if (QueryAccept(pmt) != S_OK) {
+                return VFW_E_TYPE_NOT_ACCEPTED;
+            }
+            SetFormat(const_cast<AM_MEDIA_TYPE*>(pmt));
+        }
     }
-    if (!match) return VFW_E_TYPE_NOT_ACCEPTED;
 
-    HRESULT hr = pReceivePin->ReceiveConnection(static_cast<IPin*>(this), &mt);
+    // First try connecting with m_CurrentMediaType (which preserves any format set via IAMStreamConfig::SetFormat!)
+    AM_MEDIA_TYPE current_mt{};
+    if (!CopyCurrentMediaType(&current_mt)) {
+        return E_OUTOFMEMORY;
+    }
+
+    HRESULT hr = pReceivePin->ReceiveConnection(static_cast<IPin*>(this), &current_mt);
+    if ( current_mt.cbFormat != 0 && current_mt.pbFormat ) {
+        CoTaskMemFree(current_mt.pbFormat);
+    }
+
+    // If the downstream pin rejected m_CurrentMediaType and no explicit pmt was forced, try our other capabilities
+    if (FAILED(hr) && (!pmt || !pmt->pbFormat)) {
+        for (int i = 0; i < kNumCapabilities; ++i) {
+            AM_MEDIA_TYPE candidate{};
+            if (!BuildMediaType(i, &candidate)) continue;
+            hr = pReceivePin->ReceiveConnection(static_cast<IPin*>(this), &candidate);
+            if (SUCCEEDED(hr)) {
+                SetFormat(&candidate);
+                if (candidate.cbFormat != 0 && candidate.pbFormat) CoTaskMemFree(candidate.pbFormat);
+                break;
+            }
+            if (candidate.cbFormat != 0 && candidate.pbFormat) CoTaskMemFree(candidate.pbFormat);
+        }
+    }
+
     if (FAILED(hr)) return hr;
 
     m_pConnectedPin = pReceivePin;
@@ -448,22 +556,10 @@ STDMETHODIMP CVCamOutputPin::Connect(IPin* pReceivePin, const AM_MEDIA_TYPE* pmt
 
     hr = m_pConnectedPin->QueryInterface(IID_IMemInputPin_Local, reinterpret_cast<void**>(&m_pMemInputPin));
     if (SUCCEEDED(hr) && m_pMemInputPin) {
-        hr = m_pMemInputPin->GetAllocator(&m_pAllocator);
-        if (FAILED(hr) || !m_pAllocator) {
-            CoCreateInstance(CLSID_MemoryAllocator_Local, nullptr, CLSCTX_INPROC_SERVER, IID_IMemAllocator_Local, reinterpret_cast<void**>(&m_pAllocator));
-        }
-        if (m_pAllocator) {
-            ALLOCATOR_PROPERTIES prop{}, actual{};
-            prop.cBuffers = 2;
-            prop.cbBuffer = mt.lSampleSize;
-            prop.cbAlign = 1;
-            m_pAllocator->SetProperties(&prop, &actual);
-            m_pMemInputPin->NotifyAllocator(m_pAllocator, FALSE);
-            m_pAllocator->Commit();
-        }
+        std::lock_guard<std::mutex> lock(m_FormatMutex);
+        ConfigureAllocatorLocked();
     }
 
-    SetFormat(&mt);
     return S_OK;
 }
 
@@ -472,6 +568,7 @@ STDMETHODIMP CVCamOutputPin::ReceiveConnection(IPin*, const AM_MEDIA_TYPE*) {
 }
 
 STDMETHODIMP CVCamOutputPin::Disconnect() {
+    std::lock_guard<std::mutex> lock(m_FormatMutex);
     if (m_pAllocator) {
         m_pAllocator->Decommit();
         m_pAllocator->Release();
@@ -499,11 +596,7 @@ STDMETHODIMP CVCamOutputPin::ConnectedTo(IPin** pPin) {
 STDMETHODIMP CVCamOutputPin::ConnectionMediaType(AM_MEDIA_TYPE* pmt) {
     if (!pmt) return E_POINTER;
     if (!m_pConnectedPin) return VFW_E_NOT_CONNECTED;
-    auto* p = CreateMediaType(&m_CurrentMediaType);
-    if (!p) return E_OUTOFMEMORY;
-    std::memcpy(pmt, p, sizeof(AM_MEDIA_TYPE));
-    CoTaskMemFree(p);
-    return S_OK;
+    return CopyCurrentMediaType(pmt) ? S_OK : E_OUTOFMEMORY;
 }
 
 STDMETHODIMP CVCamOutputPin::QueryPinInfo(PIN_INFO* pInfo) {
@@ -533,6 +626,10 @@ STDMETHODIMP CVCamOutputPin::QueryAccept(const AM_MEDIA_TYPE* pmt) {
     if (!pmt) return E_POINTER;
     if (pmt->majortype != MEDIATYPE_Video_Local) return S_FALSE;
     if (pmt->subtype != MEDIASUBTYPE_NV12_Local && pmt->subtype != MEDIASUBTYPE_YUY2_Local) return S_FALSE;
+    if (pmt->formattype == FORMAT_VideoInfo_Local && pmt->pbFormat && pmt->cbFormat >= sizeof(VIDEOINFOHEADER)) {
+        auto* vih = reinterpret_cast<const VIDEOINFOHEADER*>(pmt->pbFormat);
+        if (vih->bmiHeader.biWidth <= 0 || std::abs(vih->bmiHeader.biHeight) <= 0) return S_FALSE;
+    }
     return S_OK;
 }
 
@@ -557,39 +654,61 @@ STDMETHODIMP CVCamOutputPin::NewSegment(REFERENCE_TIME, REFERENCE_TIME, double) 
 
 STDMETHODIMP CVCamOutputPin::SetFormat(AM_MEDIA_TYPE* pmt) {
     if (!pmt) return E_POINTER;
-    if (pmt->formattype == FORMAT_VideoInfo_Local && pmt->pbFormat) {
-        auto* vih = reinterpret_cast<VIDEOINFOHEADER*>(pmt->pbFormat);
-        m_Width = vih->bmiHeader.biWidth;
-        m_Height = vih->bmiHeader.biHeight;
-        m_AvgTimePerFrame = vih->AvgTimePerFrame > 0 ? vih->AvgTimePerFrame : 166666;
+    if (QueryAccept(pmt) != S_OK) return VFW_E_INVALIDMEDIATYPE;
+
+    std::lock_guard<std::mutex> lock(m_FormatMutex);
+
+    auto* p = CreateMediaType(pmt);
+    if (!p) return E_OUTOFMEMORY;
+
+    if (p->formattype == FORMAT_VideoInfo_Local && p->pbFormat && p->cbFormat >= sizeof(VIDEOINFOHEADER)) {
+        auto* vih = reinterpret_cast<VIDEOINFOHEADER*>(p->pbFormat);
+        uint32_t w = vih->bmiHeader.biWidth > 0 ? static_cast<uint32_t>(vih->bmiHeader.biWidth) : 1920u;
+        uint32_t h = std::abs(vih->bmiHeader.biHeight) > 0 ? static_cast<uint32_t>(std::abs(vih->bmiHeader.biHeight)) : 1080u;
+        m_Width = w;
+        m_Height = h;
+        m_AvgTimePerFrame = vih->AvgTimePerFrame > 0 ? vih->AvgTimePerFrame : 333333;
+
+        bool is_yuy2 = (p->subtype == MEDIASUBTYPE_YUY2_Local);
+        vih->bmiHeader.biWidth = static_cast<LONG>(w);
+        vih->bmiHeader.biHeight = static_cast<LONG>(h);
+        vih->bmiHeader.biPlanes = 1;
+        vih->bmiHeader.biBitCount = is_yuy2 ? 16 : 12;
+        vih->bmiHeader.biCompression = is_yuy2 ? 0x32595559 : 0x3231564E;
+        vih->bmiHeader.biSizeImage = (w * h * vih->bmiHeader.biBitCount) / 8;
+        p->lSampleSize = vih->bmiHeader.biSizeImage;
+        p->bFixedSizeSamples = TRUE;
     }
-    if (m_CurrentMediaType.cbFormat != 0) {
+
+    if (m_CurrentMediaType.cbFormat != 0 && m_CurrentMediaType.pbFormat) {
         CoTaskMemFree(m_CurrentMediaType.pbFormat);
     }
-    auto* p = CreateMediaType(pmt);
-    if (p) {
-        std::memcpy(&m_CurrentMediaType, p, sizeof(AM_MEDIA_TYPE));
-        CoTaskMemFree(p);
+    std::memcpy(&m_CurrentMediaType, p, sizeof(AM_MEDIA_TYPE));
+    CoTaskMemFree(p);
+
+    if (m_pMemInputPin) {
+        ConfigureAllocatorLocked();
     }
     return S_OK;
 }
 
 STDMETHODIMP CVCamOutputPin::GetFormat(AM_MEDIA_TYPE** ppmt) {
     if (!ppmt) return E_POINTER;
+    std::lock_guard<std::mutex> lock(m_FormatMutex);
     *ppmt = CreateMediaType(&m_CurrentMediaType);
     return *ppmt ? S_OK : E_OUTOFMEMORY;
 }
 
 STDMETHODIMP CVCamOutputPin::GetNumberOfCapabilities(int* piCount, int* piSize) {
     if (!piCount || !piSize) return E_POINTER;
-    *piCount = 5;
+    *piCount = kNumCapabilities;
     *piSize = sizeof(VIDEO_STREAM_CONFIG_CAPS);
     return S_OK;
 }
 
 STDMETHODIMP CVCamOutputPin::GetStreamCaps(int iIndex, AM_MEDIA_TYPE** ppmt, BYTE* pSCC) {
     if (!ppmt || !pSCC) return E_POINTER;
-    if (iIndex < 0 || iIndex >= 5) return S_FALSE;
+    if (iIndex < 0 || iIndex >= kNumCapabilities) return S_FALSE;
 
     *ppmt = static_cast<AM_MEDIA_TYPE*>(CoTaskMemAlloc(sizeof(AM_MEDIA_TYPE)));
     if (!*ppmt) return E_OUTOFMEMORY;
@@ -599,26 +718,31 @@ STDMETHODIMP CVCamOutputPin::GetStreamCaps(int iIndex, AM_MEDIA_TYPE** ppmt, BYT
         return S_FALSE;
     }
 
+    auto* vih = reinterpret_cast<VIDEOINFOHEADER*>((*ppmt)->pbFormat);
+    LONG w = vih ? vih->bmiHeader.biWidth : 1920;
+    LONG h = vih ? std::abs(vih->bmiHeader.biHeight) : 1080;
+    REFERENCE_TIME avg_time = (vih && vih->AvgTimePerFrame > 0) ? vih->AvgTimePerFrame : 333333;
+
     auto* scc = reinterpret_cast<VIDEO_STREAM_CONFIG_CAPS*>(pSCC);
     std::memset(scc, 0, sizeof(VIDEO_STREAM_CONFIG_CAPS));
     scc->guid = FORMAT_VideoInfo_Local;
     scc->VideoStandard = 0;
-    scc->InputSize.cx = 1920;
-    scc->InputSize.cy = 1080;
-    scc->MinCroppingSize.cx = 640;
-    scc->MinCroppingSize.cy = 480;
-    scc->MaxCroppingSize.cx = 3840;
-    scc->MaxCroppingSize.cy = 2160;
+    scc->InputSize.cx = w;
+    scc->InputSize.cy = h;
+    scc->MinCroppingSize.cx = w;
+    scc->MinCroppingSize.cy = h;
+    scc->MaxCroppingSize.cx = w;
+    scc->MaxCroppingSize.cy = h;
     scc->CropGranularityX = 2;
     scc->CropGranularityY = 2;
-    scc->MinOutputSize.cx = 640;
-    scc->MinOutputSize.cy = 480;
-    scc->MaxOutputSize.cx = 3840;
-    scc->MaxOutputSize.cy = 2160;
+    scc->MinOutputSize.cx = w;
+    scc->MinOutputSize.cy = h;
+    scc->MaxOutputSize.cx = w;
+    scc->MaxOutputSize.cy = h;
     scc->OutputGranularityX = 2;
     scc->OutputGranularityY = 2;
-    scc->MinFrameInterval = 166666; // 60 FPS
-    scc->MaxFrameInterval = 1000000; // 10 FPS
+    scc->MinFrameInterval = avg_time;
+    scc->MaxFrameInterval = avg_time;
     scc->MinBitsPerSecond = 5000000;
     scc->MaxBitsPerSecond = 100000000;
     return S_OK;
@@ -828,37 +952,73 @@ static void BlitOrScaleNV12(const uint8_t* src, uint32_t src_w, uint32_t src_h,
             std::memcpy(dst, src, (dst_w * dst_h * 3) / 2);
             return;
         }
-        // Nearest-neighbor scale NV12 -> NV12
+        // Precompute X lookup tables once per frame and reuse duplicate rows via memcpy
+        std::vector<uint32_t> x_map(dst_w);
+        for (uint32_t x = 0; x < dst_w; ++x) {
+            x_map[x] = (x * src_w) / dst_w;
+        }
+        uint32_t half_dst_w = dst_w / 2;
+        uint32_t half_src_w = src_w / 2;
+        std::vector<uint32_t> uv_x_map(half_dst_w);
+        for (uint32_t x = 0; x < half_dst_w; ++x) {
+            uv_x_map[x] = ((x * half_src_w) / half_dst_w) * 2;
+        }
+
         uint8_t* dst_y  = dst;
         uint8_t* dst_uv = dst + (dst_w * dst_h);
+        uint32_t prev_sy = UINT32_MAX;
         for (uint32_t y = 0; y < dst_h; ++y) {
             uint32_t sy = (y * src_h) / dst_h;
-            const uint8_t* srow = src_y + sy * src_w;
             uint8_t* drow = dst_y + y * dst_w;
+            if (sy == prev_sy && y > 0) {
+                std::memcpy(drow, drow - dst_w, dst_w);
+                continue;
+            }
+            prev_sy = sy;
+            const uint8_t* srow = src_y + sy * src_w;
             for (uint32_t x = 0; x < dst_w; ++x) {
-                drow[x] = srow[(x * src_w) / dst_w];
+                drow[x] = srow[x_map[x]];
             }
         }
-        for (uint32_t y = 0; y < dst_h / 2; ++y) {
-            uint32_t sy = (y * (src_h / 2)) / (dst_h / 2);
-            const uint8_t* srow = src_uv + sy * src_w;
+
+        uint32_t half_dst_h = dst_h / 2;
+        uint32_t half_src_h = src_h / 2;
+        prev_sy = UINT32_MAX;
+        for (uint32_t y = 0; y < half_dst_h; ++y) {
+            uint32_t sy = (y * half_src_h) / half_dst_h;
             uint8_t* drow = dst_uv + y * dst_w;
-            for (uint32_t x = 0; x < dst_w / 2; ++x) {
-                uint32_t sx = (x * (src_w / 2)) / (dst_w / 2);
-                drow[x * 2]     = srow[sx * 2];
-                drow[x * 2 + 1] = srow[sx * 2 + 1];
+            if (sy == prev_sy && y > 0) {
+                std::memcpy(drow, drow - dst_w, dst_w);
+                continue;
+            }
+            prev_sy = sy;
+            const uint8_t* srow = src_uv + sy * src_w;
+            for (uint32_t x = 0; x < half_dst_w; ++x) {
+                uint32_t sx2 = uv_x_map[x];
+                drow[x * 2]     = srow[sx2];
+                drow[x * 2 + 1] = srow[sx2 + 1];
             }
         }
     } else {
         // Convert NV12 -> YUY2 (with scaling if needed)
+        std::vector<uint32_t> x_map(dst_w);
+        for (uint32_t x = 0; x < dst_w; ++x) {
+            x_map[x] = (x * src_w) / dst_w;
+        }
+        uint32_t prev_sy = UINT32_MAX;
         for (uint32_t y = 0; y < dst_h; ++y) {
             uint32_t sy = (y * src_h) / dst_h;
+            uint8_t* drow = dst + y * (dst_w * 2);
+            if (sy == prev_sy && y > 0) {
+                std::memcpy(drow, drow - (dst_w * 2), dst_w * 2);
+                continue;
+            }
+            prev_sy = sy;
             const uint8_t* sy_row = src_y + sy * src_w;
             const uint8_t* suv_row = src_uv + (sy / 2) * src_w;
-            uint8_t* drow = dst + y * (dst_w * 2);
             for (uint32_t x = 0; x < dst_w; x += 2) {
-                uint32_t sx0 = (x * src_w) / dst_w;
-                uint32_t sx1 = ((x + 1) * src_w) / dst_w;
+                uint32_t sx0 = x_map[x];
+                uint32_t sx1 = x_map[x + 1];
                 uint32_t uv_idx = (sx0 / 2) * 2;
                 drow[x * 2 + 0] = sy_row[sx0];
                 drow[x * 2 + 1] = suv_row[uv_idx];
@@ -919,10 +1079,17 @@ void CVCamFilter::WorkerLoop() {
         pSample->GetPointer(&pBuffer);
         long buf_len = pSample->GetSize();
 
-        uint32_t w = m_pPin->GetCurrentWidth();
-        uint32_t h = m_pPin->GetCurrentHeight();
-        bool is_yuy2 = m_pPin->IsYUY2();
+        uint32_t w = 1920, h = 1080;
+        bool is_yuy2 = false;
+        REFERENCE_TIME avg_time = 333333;
+        m_pPin->GetCurrentFormatSnapshot(w, h, is_yuy2, avg_time);
         uint32_t needed_bytes = is_yuy2 ? (w * h * 2) : ((w * h * 3) / 2);
+
+        if (!pBuffer || buf_len < static_cast<long>(needed_bytes)) {
+            pSample->Release();
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            continue;
+        }
 
         // Low-latency wakeup hint (up to 4ms), then read the latest active frame if fresh (< 2500ms)
         shmem_reader.wait_for_frame(4);
@@ -931,14 +1098,13 @@ void CVCamFilter::WorkerLoop() {
         camphone::VCamSharedHeader hdr{};
         if (shmem_reader.read_frame(hdr, payload, 2500)) {
             uint32_t src_nv12_bytes = (hdr.width * hdr.height * 3) / 2;
-            if (hdr.width > 0 && hdr.height > 0 && payload.size() >= src_nv12_bytes &&
-                pBuffer && buf_len >= static_cast<long>(needed_bytes)) {
+            if (hdr.width > 0 && hdr.height > 0 && payload.size() >= src_nv12_bytes) {
                 BlitOrScaleNV12(payload.data(), hdr.width, hdr.height, pBuffer, w, h, is_yuy2);
                 has_frame = true;
             }
         }
 
-        if (!has_frame && pBuffer && buf_len >= static_cast<long>(needed_bytes)) {
+        if (!has_frame) {
             if (!is_yuy2) {
                 camphone::VCamStandbyRenderer::render_nv12(pBuffer, w, h, frame_index);
             } else {
@@ -952,7 +1118,6 @@ void CVCamFilter::WorkerLoop() {
         pSample->SetActualDataLength(needed_bytes);
         pSample->SetSyncPoint(TRUE);
 
-        REFERENCE_TIME avg_time = m_pPin->GetAvgTimePerFrame();
         REFERENCE_TIME start_rt = frame_index * avg_time;
         REFERENCE_TIME stop_rt = start_rt + avg_time;
         pSample->SetTime(&start_rt, &stop_rt);

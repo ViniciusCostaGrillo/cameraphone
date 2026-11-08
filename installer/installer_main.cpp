@@ -254,6 +254,11 @@ static bool extract_payload_to(const fs::path& target_dir) {
     std::error_code ec;
     fs::create_directories(target_dir, ec);
 
+    // Ensure running instances of CameraPhone.exe or adb.exe are closed before overwriting files
+    system("taskkill /F /IM CameraPhone.exe >nul 2>&1");
+    system("taskkill /F /IM adb.exe >nul 2>&1");
+    Sleep(500);
+
     // Try extracting with built-in Windows tar.exe (fastest, standard in Win 10/11)
     std::string tar_cmd = "tar.exe -xf \"" + zip_path.string() + "\" -C \"" + target_dir.string() + "\"";
     int rc = system(tar_cmd.c_str());
@@ -278,6 +283,11 @@ static void perform_installation() {
     };
 
     set_status("Extraindo arquivos em C:\\Program Files\\CameraPhone...", 20);
+
+    // Ensure running instances of CameraPhone.exe or adb.exe are closed before overwriting files
+    system("taskkill /F /IM CameraPhone.exe >nul 2>&1");
+    system("taskkill /F /IM adb.exe >nul 2>&1");
+    Sleep(500);
 
     const fs::path target_dir = R"(C:\Program Files\CameraPhone)";
     if (!extract_payload_to(target_dir)) {
@@ -592,6 +602,7 @@ int main(int argc, char** argv) {
             }
             set_autostart_registry(target_dir / "CameraPhone.exe");
             deploy_uninstaller_and_register(target_dir);
+            ShellExecuteA(nullptr, "open", (target_dir / "CameraPhone.exe").string().c_str(), "--background", target_dir.string().c_str(), SW_HIDE);
             return 0;
         }
         return 1;

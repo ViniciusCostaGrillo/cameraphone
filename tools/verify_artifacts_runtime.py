@@ -50,12 +50,14 @@ def verify_vcam_runtime():
     assert hasattr(lib, "DllUnregisterServer"), "Missing DllUnregisterServer in cameraphone-vcam.dll"
 
     test_exe = ROOT / "tests" / "test_vcam_dshow.exe"
-    if not test_exe.exists():
-        subprocess.run(["g++", "-O2", "-std=c++20", str(ROOT / "tests" / "test_vcam_dshow.cpp"), "-lole32", "-loleaut32", "-luuid", "-o", str(test_exe)], check=True)
+    test_src = ROOT / "tests" / "test_vcam_dshow.cpp"
+    if not test_exe.exists() or test_src.stat().st_mtime > test_exe.stat().st_mtime:
+        subprocess.run(["g++", "-O2", "-std=c++20", str(test_src), "-lole32", "-loleaut32", "-luuid", "-o", str(test_exe)], check=True)
     res = subprocess.run([str(test_exe)], capture_output=True, text=True, check=True)
     assert "PIN_CATEGORY_CAPTURE present (Required by NVIDIA Broadcast)!" in res.stdout, f"Missing PIN_CATEGORY_CAPTURE in output: {res.stdout}"
-    assert "StreamConfig exposed 5 capability formats" in res.stdout, f"Missing stream formats in output: {res.stdout}"
-    print(f"[PASS] DirectShow Virtual Camera Test: {vcam_path.name} verified with PIN_CATEGORY_CAPTURE for NVIDIA Broadcast & 5 capability formats.")
+    assert "StreamConfig exposed 8 capability formats" in res.stdout, f"Missing stream formats in output: {res.stdout}"
+    assert "Verified NVIDIA Broadcast 4K (3840x2160) SetFormat -> Connect(nullptr) -> Sample UV plane valid!" in res.stdout, f"Missing 4K Broadcast test in output: {res.stdout}"
+    print(f"[PASS] DirectShow Virtual Camera Test: {vcam_path.name} verified with PIN_CATEGORY_CAPTURE for NVIDIA Broadcast & 8 capability formats (including 4K).")
 
 def verify_exe_runtime():
     exe_path = DIST / "CameraPhone.exe"
