@@ -34,7 +34,8 @@
 5. [Zero-Trust Security Architecture](#-zero-trust-security-architecture)
 6. [Desktop Companion & One-Click Installer](#-desktop-companion--one-click-installer)
 7. [Official Binary Downloads (`v1.4.0`)](#-official-binary-downloads-v140)
-8. [Building from Source & Running Tests](#-building-from-source--running-tests)
+8. [Support the Project](#-support-the-project)
+9. [Building from Source & Running Tests](#-building-from-source--running-tests)
 
 ---
 
@@ -161,6 +162,22 @@ All pre-compiled, standalone binaries are available on the [GitHub Releases](htt
 
 ---
 
+## ☕ Support the Project
+
+CameraPhone 4K Pro is and will always be **100% free, open-source, ad-free and watermark-free**. If it's useful to you, consider supporting its development:
+
+[![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/viniciuscostagrillo)
+
+Your support helps me:
+
+- 📱 Publish the app on the **Google Play Store**
+- 🍎 Bring CameraPhone to **iOS and macOS** (I'm saving up for an iPhone and a MacBook for development and testing)
+- 🛠️ Fix bugs, test on more devices and build new features
+
+Can't donate? A ⭐ on this repo, sharing the project or reporting a bug helps just as much. Thank you! 💚
+
+---
+
 ## 🧪 Building from Source & Running Tests
 
 ```powershell
@@ -195,6 +212,7 @@ python tools/verify_artifacts_runtime.py
 4. [Conexão Automática via Cabo USB e Wi-Fi Zero-Config](#-conexão-automática-via-cabo-usb-e-wi-fi-zero-config)
 5. [Central Desktop & Alternância de Idioma (`EN / PT`)](#-central-desktop--alternância-de-idioma-en--pt)
 6. [Tabela de Downloads (`v1.4.0`)](#-tabela-de-downloads-v140)
+7. [Apoie o Projeto](#-apoie-o-projeto)
 
 ---
 
@@ -253,6 +271,22 @@ Todos os aplicativos (Instalador `CameraPhone-Setup.exe`, Companion `CameraPhone
 | 📱 **`CameraPhone.apk`** | 865 KB | **Aplicativo Android Oficial Assinado** (Zero-Config USB & Wi-Fi, botão Language EN/PT) | [Baixar APK](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.4.0/CameraPhone.apk) |
 | 🔌 **`cameraphone.dll`** | 1.7 MB | **Plugin Nativo OBS Studio 64-bit** | [Baixar DLL](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.4.0/cameraphone.dll) |
 | 🎥 **`cameraphone-vcam.dll`** | 838 KB | **Câmera Virtual DirectShow 4K60 para NVIDIA Broadcast** | [Baixar VCam](https://github.com/ViniciusCostaGrillo/cameraphone/releases/download/v1.4.0/cameraphone-vcam.dll) |
+
+---
+
+## ☕ Apoie o Projeto
+
+O CameraPhone 4K Pro é e sempre será **100% gratuito, open-source, sem anúncios e sem marca d'água**. Se o app é útil para você, considere apoiar o desenvolvimento:
+
+[![Apoie no Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/viniciuscostagrillo)
+
+Seu apoio me ajuda a:
+
+- 📱 Publicar o app na **Google Play Store**
+- 🍎 Levar o CameraPhone para **iOS e macOS** (estou juntando dinheiro para um iPhone e um MacBook para desenvolver e testar)
+- 🛠️ Corrigir bugs, testar em mais aparelhos e criar novos recursos
+
+Não pode doar? Uma ⭐ no repositório, compartilhar o projeto ou reportar um bug ajuda tanto quanto. Obrigado! 💚
 
 ---
 
