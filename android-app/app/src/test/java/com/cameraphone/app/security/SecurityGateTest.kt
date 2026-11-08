@@ -193,4 +193,65 @@ class SecurityGateTest {
             server.stop()
         }
     }
+
+    @Test
+    fun `kill switch blocks all requests when disconnected and severs active stream immediately`() {
+        val gate = SecurityGate()
+        assertTrue(gate.connectionEnabled)
+
+        var activeStreams = 0
+        val server = CamPhoneServer(
+            port = 0,
+            usbOnlyLoopback = true,
+            securityGate = gate,
+            capabilitiesJsonProvider = { "{}" },
+            onStartStream = { _, _, _, _, _, _ -> activeStreams++ },
+            onStopStream = { activeStreams-- },
+            onControlPatch = {},
+            onTallyUpdate = {}
+        )
+        server.start()
+        val port = server.boundPort
+        try {
+            // 1. Start an active stream
+            val streamSock = Socket("127.0.0.1", port)
+            streamSock.soTimeout = 1000
+            streamSock.getOutputStream().write("GET /v1/stream?lens=0&res=1920x1080&fps=30&codec=hevc&hdr=0 HTTP/1.1\r\nAuthorization: Bearer usb-zero-config\r\n\r\n".toByteArray())
+            val reader = BufferedReader(InputStreamReader(streamSock.getInputStream()))
+            assertTrue(reader.readLine().contains("200"))
+            while (reader.readLine().isNotEmpty()) {}
+            Thread.sleep(50)
+            assertEquals(1, activeStreams)
+
+            // 2. Disarm SecurityGate -> verifyRequest returns AuthResult.Disconnected even for valid PIN or usb-zero-config
+            gate.connectionEnabled = false
+            assertEquals(AuthResult.Disconnected, gate.verifyRequest("127.0.0.1", "Bearer usb-zero-config"))
+            assertEquals(AuthResult.Disconnected, gate.verifyRequest("192.168.1.50", "Bearer ${gate.currentPin}"))
+
+            // 3. Server rejects new requests with 503 when disarmed
+            Socket("127.0.0.1", port).use { s ->
+                s.getOutputStream().write("GET /v1/capabilities HTTP/1.1\r\nAuthorization: Bearer usb-zero-config\r\n\r\n".toByteArray())
+                val statusLine = BufferedReader(InputStreamReader(s.getInputStream())).readLine()
+                assertTrue("Expected 503 when disconnected, got: $statusLine", statusLine.contains("503"))
+            }
+
+            // 4. Calling server.stop() immediately severs the active stream socket and triggers onStopStream()
+            server.stop()
+            val eofOrClosed = try {
+                streamSock.getInputStream().read() == -1
+            } catch (_: Exception) {
+                true
+            }
+            assertTrue("Active stream socket must be immediately closed on server.stop()", eofOrClosed)
+            Thread.sleep(50)
+            assertEquals("onStopStream must be called when server stops active stream", 0, activeStreams)
+            streamSock.close()
+
+            // 5. Re-arming SecurityGate restores normal authorization
+            gate.connectionEnabled = true
+            assertEquals(AuthResult.Authorized, gate.verifyRequest("127.0.0.1", "Bearer usb-zero-config"))
+        } finally {
+            server.stop()
+        }
+    }
 }

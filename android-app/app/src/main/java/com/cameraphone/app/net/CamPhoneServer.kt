@@ -30,6 +30,8 @@ class CamPhoneServer(
     @Volatile
     private var activeStreamOutput: OutputStream? = null
     @Volatile
+    private var activeStreamSocket: Socket? = null
+    @Volatile
     var lastStreamRemoteIp: String = "127.0.0.1"
     private val writeLock = Any()
 
@@ -113,6 +115,11 @@ class CamPhoneServer(
             }
 
             when (securityGate.verifyRequest(remoteIp, authHeader)) {
+                AuthResult.Disconnected -> {
+                    AppLogger.warn("Auth", "Rejected 503 from $remoteIp on $method $fullPath (Disconnected by user Kill-Switch)")
+                    writeHttpResponse(out, 503, "Service Unavailable", "{\"error\":\"disconnected_by_user\"}")
+                    return
+                }
                 AuthResult.Unauthorized -> {
                     AppLogger.warn("Auth", "Rejected 401 from $remoteIp on $method $fullPath (invalid PIN)")
                     writeHttpResponse(out, 401, "Unauthorized", "{\"error\":\"invalid_pin\"}")
@@ -153,12 +160,16 @@ class CamPhoneServer(
                         if (!streamingActive.compareAndSet(false, true)) {
                             AppLogger.warn("Server", "Second stream request from $remoteIp while active -> replacing previous stream")
                             val prev = activeStreamOutput
+                            val prevSock = activeStreamSocket
                             activeStreamOutput = out
+                            activeStreamSocket = socket
                             try { prev?.close() } catch (_: Exception) {}
+                            try { prevSock?.close() } catch (_: Exception) {}
                             onStopStream()
                             streamingActive.set(true)
                         } else {
                             activeStreamOutput = out
+                            activeStreamSocket = socket
                         }
                         lastStreamRemoteIp = remoteIp
                         ownsActiveStream = true
@@ -220,6 +231,7 @@ class CamPhoneServer(
                 synchronized(writeLock) {
                     if (clientOut != null && activeStreamOutput === clientOut) {
                         activeStreamOutput = null
+                        activeStreamSocket = null
                         streamingActive.set(false)
                         shouldStop = true
                     }
@@ -273,7 +285,21 @@ class CamPhoneServer(
 
     fun stop() {
         running.set(false)
-        streamingActive.set(false)
+        var shouldStopStream = false
+        synchronized(writeLock) {
+            if (streamingActive.getAndSet(false) || activeStreamOutput != null || activeStreamSocket != null) {
+                shouldStopStream = true
+            }
+            val out = activeStreamOutput
+            val sock = activeStreamSocket
+            activeStreamOutput = null
+            activeStreamSocket = null
+            try { out?.close() } catch (_: Exception) {}
+            try { sock?.close() } catch (_: Exception) {}
+        }
+        if (shouldStopStream) {
+            try { onStopStream() } catch (_: Exception) {}
+        }
         try { serverSocket?.close() } catch (_: Exception) {}
         serverSocket = null
     }

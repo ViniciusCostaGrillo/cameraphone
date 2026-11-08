@@ -38,10 +38,12 @@ class MainActivity : Activity() {
     private var currentLanguage = AppLanguage.EN
     private var currentTally = "idle"
     private var isStreaming = false
+    private var isConnectionArmed = true
     private var lastTelemetryInfo = ""
 
     private lateinit var langToggleBtn: Button
     private lateinit var tallyBanner: TextView
+    private lateinit var connectToggleBtn: Button
     private lateinit var ipInfoText: TextView
     private lateinit var pinLabelText: TextView
     private lateinit var pinValueText: TextView
@@ -61,12 +63,19 @@ class MainActivity : Activity() {
             val svc = (binder as? CameraStreamService.LocalBinder)?.getService() ?: return
             streamService = svc
             svc.securityGate.resetLockouts()
+            isConnectionArmed = svc.isConnectionArmed
             pinValueText.text = svc.securityGate.currentPin.chunked(3).joinToString(" ")
             usbOnlySwitch.isChecked = svc.usbOnlyMode
+            updateConnectToggleBtnUi()
             updateIpBanner(svc.usbOnlyMode)
             refreshLogsUi()
             svc.onUiStateChange = { tally, streaming, info ->
-                runOnUiThread { updateStatusUi(tally, streaming, info) }
+                runOnUiThread {
+                    isConnectionArmed = svc.isConnectionArmed
+                    updateConnectToggleBtnUi()
+                    updateIpBanner(svc.usbOnlyMode)
+                    updateStatusUi(tally, streaming, info)
+                }
             }
         }
 
@@ -121,7 +130,74 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun updateConnectToggleBtnUi() {
+        if (!::connectToggleBtn.isInitialized) return
+        val density = resources.displayMetrics.density
+        fun dp(v: Int): Int = (v * density).toInt()
+
+        if (isConnectionArmed) {
+            connectToggleBtn.text = if (currentLanguage == AppLanguage.PT) {
+                "🛑 DESCONECTAR (CORTAR CÂMERA E REDE)"
+            } else {
+                "🛑 DISCONNECT (CUT CAMERA & NETWORK)"
+            }
+            connectToggleBtn.setTextColor(Color.WHITE)
+            connectToggleBtn.background = GradientDrawable().apply {
+                setColor(Color.parseColor("#DC2626"))
+                cornerRadius = dp(10).toFloat()
+                setStroke(dp(1), Color.parseColor("#EF4444"))
+            }
+        } else {
+            connectToggleBtn.text = if (currentLanguage == AppLanguage.PT) {
+                "🔌 CONECTAR (LIBERAR CONEXÃO COM O PC)"
+            } else {
+                "🔌 CONNECT (ALLOW PC CONNECTION)"
+            }
+            connectToggleBtn.setTextColor(Color.WHITE)
+            connectToggleBtn.background = GradientDrawable().apply {
+                setColor(Color.parseColor("#16A34A"))
+                cornerRadius = dp(10).toFloat()
+                setStroke(dp(1), Color.parseColor("#22C55E"))
+            }
+        }
+    }
+
+    private fun toggleConnectionArmed() {
+        val newArmed = !isConnectionArmed
+        isConnectionArmed = newArmed
+        streamService?.setConnectionArmed(newArmed)
+        updateConnectToggleBtnUi()
+        updateIpBanner(usbOnlySwitch.isChecked)
+        if (!newArmed) {
+            updateStatusUi("disconnected", false, "")
+            val msg = if (currentLanguage == AppLanguage.PT) {
+                "Conexão cortada! Portas fechadas e câmera bloqueada."
+            } else {
+                "Connection severed! Ports closed and camera locked."
+            }
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        } else {
+            updateStatusUi("idle", false, "")
+            val msg = if (currentLanguage == AppLanguage.PT) {
+                "Conexão liberada! Pronto para transmitir."
+            } else {
+                "Connection enabled! Ready to stream."
+            }
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun updateIpBanner(usbOnly: Boolean) {
+        if (!isConnectionArmed) {
+            ipInfoText.setTextColor(Color.parseColor("#F87171"))
+            ipInfoText.text = if (currentLanguage == AppLanguage.PT) {
+                "🔒 BLACKOUT DE REDE ATIVO • Portas 4748/4749 Fechadas"
+            } else {
+                "🔒 NETWORK BLACKOUT ACTIVE • Ports 4748/4749 Closed"
+            }
+            return
+        }
+        ipInfoText.setTextColor(Color.parseColor("#00E676"))
         val ip = detectWifiIpv4()
         ipInfoText.text = if (usbOnly) {
             if (currentLanguage == AppLanguage.PT) {
@@ -140,6 +216,7 @@ class MainActivity : Activity() {
 
     private fun applyLanguageStrings() {
         langToggleBtn.text = if (currentLanguage == AppLanguage.PT) "🌐 Language: PT" else "🌐 Language: EN"
+        updateConnectToggleBtnUi()
         updateIpBanner(usbOnlySwitch.isChecked)
         pinLabelText.text = if (currentLanguage == AppLanguage.PT) {
             "PIN DE SEGURANÇA (USB e Wi-Fi local conectam automaticamente sem PIN)"
@@ -252,6 +329,21 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ))
+
+        // 1b. Security Kill-Switch Button (Disconnect / Connect)
+        connectToggleBtn = Button(this).apply {
+            text = "🛑 DISCONNECT (CUT CAMERA & NETWORK)"
+            textSize = 13f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            setOnClickListener { toggleConnectionArmed() }
+        }
+        updateConnectToggleBtnUi()
+        rootContainer.addView(connectToggleBtn, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(8) })
 
         // 2. IP & Transport Info Banner
         ipInfoText = TextView(this).apply {
@@ -395,6 +487,21 @@ class MainActivity : Activity() {
         currentTally = tally
         isStreaming = streaming
         lastTelemetryInfo = info
+
+        if (!isConnectionArmed || tally.lowercase() == "disconnected") {
+            tallyBanner.text = if (currentLanguage == AppLanguage.PT) {
+                "🔒 DESCONECTADO • REDE E CÂMERA BLOQUEADAS"
+            } else {
+                "🔒 DISCONNECTED • NETWORK & CAMERA LOCKED"
+            }
+            tallyBanner.setTextColor(Color.parseColor("#F87171"))
+            telemetryText.text = if (currentLanguage == AppLanguage.PT) {
+                "Bloqueio de Segurança Ativo • Zero Portas Abertas • Câmera Desligada"
+            } else {
+                "Security Lock Active • Zero Open Ports • Camera Off"
+            }
+            return
+        }
 
         if (!streaming) {
             tallyBanner.text = if (currentLanguage == AppLanguage.PT) {

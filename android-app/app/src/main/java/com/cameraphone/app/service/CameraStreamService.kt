@@ -54,6 +54,10 @@ class CameraStreamService : Service() {
     var usbOnlyMode: Boolean = false
         private set
 
+    @Volatile
+    var isConnectionArmed: Boolean = true
+        private set
+
     private data class StreamParams(
         val lensId: String,
         val w: Int,
@@ -87,26 +91,7 @@ class CameraStreamService : Service() {
 
         createNotificationChannel()
         startForeground(1001, buildNotification("Ready for OBS Studio & NVIDIA Broadcast connection (USB & Wi-Fi)"))
-        try {
-            val pm = applicationContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
-            wakeLock = pm?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CameraPhone::StreamWakeLock")?.apply {
-                setReferenceCounted(false)
-                acquire()
-            }
-            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-            val lockMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                WifiManager.WIFI_MODE_FULL_LOW_LATENCY
-            } else {
-                @Suppress("DEPRECATION")
-                WifiManager.WIFI_MODE_FULL_HIGH_PERF
-            }
-            wifiLock = wm?.createWifiLock(lockMode, "CameraPhone::StreamWifiLock")?.apply {
-                setReferenceCounted(false)
-                acquire()
-            }
-        } catch (e: Throwable) {
-            AppLogger.warn("Service", "Could not acquire Wi-Fi/Power WakeLock: ${e.message}")
-        }
+        acquirePowerAndWifiLocks()
         capabilities = CapabilityProbe.probeDevice(this)
         AppLogger.info("Service", "Probed ${capabilities.lenses.size} lenses, codecs=${capabilities.codecs}")
         cameraController = Camera2Controller(this)
@@ -114,10 +99,80 @@ class CameraStreamService : Service() {
         restartServer(usbOnly = false)
     }
 
+    private fun acquirePowerAndWifiLocks() {
+        try {
+            if (wakeLock == null) {
+                val pm = applicationContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
+                wakeLock = pm?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CameraPhone::StreamWakeLock")?.apply {
+                    setReferenceCounted(false)
+                }
+            }
+            if (wakeLock?.isHeld == false) {
+                wakeLock?.acquire()
+            }
+            if (wifiLock == null) {
+                val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+                val lockMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+                } else {
+                    @Suppress("DEPRECATION")
+                    WifiManager.WIFI_MODE_FULL_HIGH_PERF
+                }
+                wifiLock = wm?.createWifiLock(lockMode, "CameraPhone::StreamWifiLock")?.apply {
+                    setReferenceCounted(false)
+                }
+            }
+            if (wifiLock?.isHeld == false) {
+                wifiLock?.acquire()
+            }
+        } catch (e: Throwable) {
+            AppLogger.warn("Service", "Could not acquire Wi-Fi/Power WakeLock: ${e.message}")
+        }
+    }
+
+    private fun releasePowerAndWifiLocks() {
+        try { if (wifiLock?.isHeld == true) wifiLock?.release() } catch (_: Exception) {}
+        try { if (wakeLock?.isHeld == true) wakeLock?.release() } catch (_: Exception) {}
+    }
+
+    fun setConnectionArmed(armed: Boolean) {
+        isConnectionArmed = armed
+        securityGate.connectionEnabled = armed
+        if (!armed) {
+            AppLogger.warn("Security", "KILL-SWITCH ACTIVATED: Disconnecting active stream, closing ports 4748/4749, and locking Camera/Mic.")
+            unregisterMdns()
+            stopUdpBeacon()
+            server?.stop()
+            server = null
+            stopHardwarePipelineInternal()
+            streamRequested = false
+            releasePowerAndWifiLocks()
+            try {
+                val nm = getSystemService(NotificationManager::class.java)
+                nm?.notify(1001, buildNotification("Disconnected (Security Lock Active • Camera & Network Off)"))
+            } catch (_: Exception) {}
+            onUiStateChange?.invoke("disconnected", false, "Security Lock Active • Zero Open Ports")
+        } else {
+            AppLogger.info("Security", "Connection ARMED by user: Re-enabling ports 4748/4749 and Camera/Mic access.")
+            acquirePowerAndWifiLocks()
+            restartServer(usbOnly = usbOnlyMode)
+            try {
+                val nm = getSystemService(NotificationManager::class.java)
+                nm?.notify(1001, buildNotification("Ready for OBS Studio & NVIDIA Broadcast connection (USB & Wi-Fi)"))
+            } catch (_: Exception) {}
+            onUiStateChange?.invoke("idle", false, "Standby")
+        }
+    }
+
     fun restartServer(usbOnly: Boolean) {
         usbOnlyMode = usbOnly
         unregisterMdns()
         server?.stop()
+        server = null
+        if (!isConnectionArmed) {
+            stopUdpBeacon()
+            return
+        }
 
         val srv = CamPhoneServer(
             port = 4748,
@@ -224,7 +279,11 @@ class CameraStreamService : Service() {
     private fun stopHardwarePipeline() {
         streamRequested = false
         stopHardwarePipelineInternal()
-        onUiStateChange?.invoke("idle", false, "Standby")
+        if (isConnectionArmed) {
+            onUiStateChange?.invoke("idle", false, "Standby")
+        } else {
+            onUiStateChange?.invoke("disconnected", false, "Security Lock Active • Zero Open Ports")
+        }
     }
 
     private fun registerMdns(port: Int) {
@@ -335,8 +394,7 @@ class CameraStreamService : Service() {
         stopUdpBeacon()
         unregisterMdns()
         server?.stop()
-        try { if (wifiLock?.isHeld == true) wifiLock?.release() } catch (_: Exception) {}
-        try { if (wakeLock?.isHeld == true) wakeLock?.release() } catch (_: Exception) {}
+        releasePowerAndWifiLocks()
         super.onDestroy()
     }
 }

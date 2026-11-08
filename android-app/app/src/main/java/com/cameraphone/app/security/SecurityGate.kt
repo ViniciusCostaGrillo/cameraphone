@@ -7,7 +7,8 @@ import java.util.concurrent.ConcurrentHashMap
 enum class AuthResult {
     Authorized,
     Unauthorized,
-    RateLimited
+    RateLimited,
+    Disconnected
 }
 
 data class CameraBounds(
@@ -44,6 +45,9 @@ class SecurityGate(
     var currentPin: String = initialPin?.takeIf { it.length == 6 && it.all(Char::isDigit) } ?: generateSixDigitPin()
         private set
 
+    @Volatile
+    var connectionEnabled: Boolean = true
+
     private data class AttemptRecord(val failures: Int, val lockedUntilMs: Long)
     private val ipAttempts = ConcurrentHashMap<String, AttemptRecord>()
 
@@ -64,6 +68,9 @@ class SecurityGate(
     }
 
     fun verifyRequest(remoteIp: String, authHeader: String?): AuthResult {
+        if (!connectionEnabled) {
+            return AuthResult.Disconnected
+        }
         val now = clockMs()
         val rec = ipAttempts[remoteIp]
         if (rec != null && rec.lockedUntilMs > now) {
