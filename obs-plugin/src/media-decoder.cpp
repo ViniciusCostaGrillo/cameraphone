@@ -58,6 +58,8 @@ using fn_av_packet_alloc = void* (*)();
 using fn_av_packet_free = void (*)(void** pkt);
 using fn_av_frame_alloc = void* (*)();
 using fn_av_frame_free = void (*)(void** frame);
+using fn_av_dict_set = int (*)(void** pm, const char* key, const char* value, int flags);
+using fn_av_dict_free = void (*)(void** m);
 
 static void* load_obs_ffmpeg_dll(const char* dll_name) {
 #ifdef _WIN32
@@ -173,7 +175,17 @@ bool MediaDecoder::initialize_video(const std::string& codec_name) {
         return false;
     }
     v_ctx_ = alloc_ctx(codec);
-    if (!v_ctx_ || open2(v_ctx_, codec, nullptr) < 0) {
+    auto dict_set = reinterpret_cast<fn_av_dict_set>(GetProcAddress(reinterpret_cast<HMODULE>(avutil_dll_), "av_dict_set"));
+    auto dict_free = reinterpret_cast<fn_av_dict_free>(GetProcAddress(reinterpret_cast<HMODULE>(avutil_dll_), "av_dict_free"));
+    void* opts = nullptr;
+    if (dict_set) {
+        dict_set(&opts, "threads", "auto", 0);
+    }
+    int open_res = v_ctx_ ? open2(v_ctx_, codec, &opts) : -1;
+    if (dict_free && opts) {
+        dict_free(&opts);
+    }
+    if (!v_ctx_ || open_res < 0) {
         DiagnosticLogger::error("MediaDecoder", "avcodec_open2 failed for codec=" + codec_name);
         return false;
     }

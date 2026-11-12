@@ -330,6 +330,7 @@ private:
             }
 
             if (OBSStreamGuard::is_obs_streaming()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
                 continue;
             }
 
