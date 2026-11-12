@@ -70,7 +70,7 @@ public:
         using fn_blog = void (*)(int, const char*, ...);
         static fn_blog s_blog = []() -> fn_blog {
             HMODULE h = GetModuleHandleA("obs.dll");
-            return h ? reinterpret_cast<fn_blog>(GetProcAddress(h, "blog")) : nullptr;
+            return h ? reinterpret_cast<fn_blog>(reinterpret_cast<void*>(GetProcAddress(h, "blog"))) : nullptr;
         }();
         if (s_blog) {
             int obs_level = 300; // LOG_INFO

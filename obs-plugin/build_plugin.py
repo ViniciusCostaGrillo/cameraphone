@@ -35,7 +35,7 @@ def run_tests():
     cxx = find_compiler()
     test_exe = BUILD / ("test_client_and_discovery.exe" if os.name == "nt" else "test_client_and_discovery")
     cmd = [
-        cxx, "-std=c++20", "-O2", "-Wall", "-Wextra", "-Werror", "-static",
+        cxx, "-std=c++20", "-O2", "-Wall", "-Wextra", "-Werror", "-Wno-cast-function-type", "-static",
         "-I", str(ROOT.parent / "protocol"),
         "-I", str(SRC),
         str(TESTS / "test_client_and_discovery.cpp"),
@@ -107,7 +107,7 @@ def build_desktop_exe():
         extra_objs.append(str(res_obj))
 
     cmd = [
-        cxx, "-std=c++20", "-O2", "-Wall", "-Wextra", "-Werror", "-static",
+        cxx, "-std=c++20", "-O2", "-Wall", "-Wextra", "-Werror", "-Wno-cast-function-type", "-static",
         "-I", str(ROOT.parent / "protocol"),
         "-I", str(SRC),
         str(ROOT.parent / "desktop-app" / "cameraphone_companion.cpp"),

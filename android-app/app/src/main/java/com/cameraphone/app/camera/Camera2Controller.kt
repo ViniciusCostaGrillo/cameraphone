@@ -49,14 +49,27 @@ class Camera2Controller(private val context: Context) {
                 Size(1920, 1080)
             }
 
+            val minDurationNs = try {
+                map?.getOutputMinFrameDuration(MediaCodec::class.java, chosenSize) ?: 0L
+            } catch (_: Throwable) { 0L }
+            val maxSensorFpsAtSize = if (minDurationNs > 0L) {
+                (1_000_000_000L / minDurationNs).toInt().coerceIn(15, 120)
+            } else {
+                requestedFps
+            }
+            val effectiveFps = minOf(requestedFps, maxSensorFpsAtSize)
+            if (effectiveFps < requestedFps) {
+                AppLogger.info("Camera2", "Sensor max FPS at ${chosenSize.width}x${chosenSize.height} is ${maxSensorFpsAtSize}fps (minDuration=${minDurationNs}ns)")
+            }
+
             val fpsRanges = chars.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)?.toList().orEmpty()
             val chosenFps = if (fpsRanges.isNotEmpty()) {
-                fpsRanges.firstOrNull { it.lower == requestedFps && it.upper == requestedFps }
-                    ?: fpsRanges.firstOrNull { it.upper == requestedFps }
-                    ?: fpsRanges.filter { it.upper <= requestedFps }.maxByOrNull { it.upper }
+                fpsRanges.firstOrNull { it.lower == effectiveFps && it.upper == effectiveFps }
+                    ?: fpsRanges.firstOrNull { it.upper == effectiveFps }
+                    ?: fpsRanges.filter { it.upper <= effectiveFps }.maxByOrNull { it.upper }
                     ?: fpsRanges.maxByOrNull { it.upper }!!
             } else {
-                Range(30, 30)
+                Range(effectiveFps, effectiveFps)
             }
 
             if (chosenSize.width != requestedWidth || chosenSize.height != requestedHeight || chosenFps.upper != requestedFps) {

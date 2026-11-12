@@ -236,9 +236,17 @@ class CameraStreamService : Service() {
             val (actualSize, actualFpsRange) = cam.pickSupportedResolutionAndFps(lensId, w, h, fps)
             val isWifi = (server?.lastStreamRemoteIp ?: "127.0.0.1") != "127.0.0.1"
             val bitrate = if (isWifi) {
-                if (actualSize.width >= 3840) 15_000_000 else 6_000_000
+                when {
+                    actualSize.width >= 3840 -> 50_000_000
+                    actualSize.width >= 2560 -> 30_000_000
+                    else -> 20_000_000
+                }
             } else {
-                if (actualSize.width >= 3840) 80_000_000 else 25_000_000
+                when {
+                    actualSize.width >= 3840 -> 100_000_000
+                    actualSize.width >= 2560 -> 50_000_000
+                    else -> 35_000_000
+                }
             }
             val vEnc = HardwareVideoEncoder(
                 codec,

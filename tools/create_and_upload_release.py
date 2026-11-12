@@ -39,7 +39,7 @@ def create_bundle_zip(zip_path: Path):
                     zf.write(f, f"adb/{f.name}")
     print(f"Bundle ZIP created ({zip_path.stat().st_size:,} bytes).")
 
-RELEASE_NOTES = """## 📱🎥 CameraPhone 4K Pro — v1.4.0 (Wireless Wi-Fi & USB NVIDIA Broadcast + English Default UI)
+RELEASE_NOTES = """## 📱🎥 CameraPhone 4K Pro — v1.5.0 (True 4K Studio Pipeline & 4K30 Sensor Support)
 
 🌐 **Official Website:** [https://viniciuscostagrillo.github.io/cameraphone/](https://viniciuscostagrillo.github.io/cameraphone/)
 
@@ -47,39 +47,32 @@ RELEASE_NOTES = """## 📱🎥 CameraPhone 4K Pro — v1.4.0 (Wireless Wi-Fi & U
 
 # 🇺🇸 English Release Notes
 
-**CameraPhone 4K Pro v1.4.0** introduces **Zero-Config Wireless Wi-Fi + USB streaming for NVIDIA Broadcast**, sets **English (`EN`) as the default interface language** across all apps (with an instant **`Language: EN / PT`** toggle button), and launches the official GitHub Pages project website!
+**CameraPhone 4K Pro v1.5.0** delivers a true end-to-end **4K UHD (`3840x2160`)** studio pipeline across **NVIDIA Broadcast**, **OBS Studio**, and **Android**, eliminating silent 1080p downgrades and low-bitrate compression artifacts.
 
-### ✨ Key New Features in v1.4.0
-1. **📶 Automatic Wi-Fi + USB Streaming for NVIDIA Broadcast:**
-   - `CameraPhone.exe` now features a hybrid USB + Wi-Fi auto-discovery engine (`DiscoveryManager::discover_wifi_devices`).
-   - When connected via USB, it streams with zero-config over ADB loopback (`127.0.0.1:4748`) and automatically caches your phone's `wlan0` Wi-Fi IP.
-   - Unplug the USB cable at any time: `CameraPhone.exe` automatically discovers your phone on the local Wi-Fi network (via cached IP, UDP beacon on port `4749`, or fast non-blocking `/24` TCP scan) and continues feeding **`CameraPhone Virtual Camera`** in **NVIDIA Broadcast** wirelessly without needing to type any IP or PIN!
-2. **🌐 English Default UI + Instant `Language: EN / PT` Toggle:**
-   - All applications (`CameraPhone-Setup.exe`, `CameraPhone.exe`, `CameraPhone.apk`, and the OBS Studio plugin) now default to **English (`EN`)** with a top-right **`Language: EN / PT`** button to switch to Portuguese (`PT-BR`) at any time.
-3. **🛡️ Private LAN Zero-Config Security (`SecurityGate.kt`):**
-   - Authorizes zero-config connections from loopback (`127.0.0.1`) and RFC1918 private LAN subnets (`192.168.*`, `10.*`, `172.16-31.*`) while blocking any external/public WAN IP.
-
-### 📦 Official Downloads (`v1.4.0`)
-| File | Description |
-| :--- | :--- |
-| **`CameraPhone-Setup.exe`** | **Full Windows Installer** (OBS Plugin, NVIDIA Broadcast Virtual Camera, Companion App, ADB, Shortcuts & Uninstaller) |
-| **`CameraPhone-v1.4.0-Windows.zip`** | Portable All-in-One Windows Bundle |
-| **`CameraPhone.exe`** | Standalone Desktop Companion & Hybrid USB/Wi-Fi Virtual Camera Feeder |
-| **`CameraPhone.apk`** | Signed Android App (Auto-connects via USB & Wi-Fi, OLED Blackout Mode, EN/PT Toggle) |
-| **`cameraphone.dll`** | Native 64-bit OBS Studio Plugin (`C:\\Program Files\\obs-studio\\obs-plugins\\64bit`) |
-| **`cameraphone-vcam.dll`** | 64-bit DirectShow 4K60 Virtual Camera for NVIDIA Broadcast |
+### ✨ What's New in v1.5.0
+1. **🎥 True 4K Default Across NVIDIA Broadcast & OBS Studio:**
+   - `CameraPhone.exe` (Desktop Companion) now requests `3840x2160` instead of hardcoded `1920x1080`.
+   - `cameraphone-vcam.dll` (DirectShow Virtual Camera) advertises `4K60 NV12` and `4K30 NV12` as primary formats and uses smooth bilinear Y-plane scaling instead of nearest-neighbor.
+   - `cameraphone.dll` (OBS Studio Plugin) defaults new sources to `4K UHD (3840x2160)`.
+2. **📱 Smart 4K30 Device Detection & Studio Bitrates (Android):**
+   - `Camera2Controller` inspects `getOutputMinFrameDuration` per resolution so 4K30-only smartphones negotiate `3840x2160 @ 30fps` cleanly instead of dropping to 1080p.
+   - Raised encoding bitrates: **100 Mbps** (USB 4K) / **50 Mbps** (Wi-Fi 4K) and **35 Mbps** (USB <=1080p) / **20 Mbps** (Wi-Fi <=1080p).
+   - Fixed `HardwareVideoEncoder` fallback ladder to try `4K @ 30fps` and `1440p` with high bitrate before falling back to 1080p.
 
 ---
 
 # 🇧🇷 Notas de Lançamento (Português)
 
-O **CameraPhone 4K Pro v1.4.0** traz o suporte **Zero-Config Híbrido (Cabo USB + Wi-Fi Automático) para o NVIDIA Broadcast**, define o **Inglês (`EN`) como idioma padrão** em todos os aplicativos (com botão **`Language: EN / PT`** no topo direito para alternar para Português), e lança a página oficial do projeto no GitHub Pages!
+O **CameraPhone 4K Pro v1.5.0** entrega um pipeline **4K UHD (`3840x2160`) real de ponta a ponta** no **NVIDIA Broadcast**, **OBS Studio** e **Android**, eliminando quedas silenciosas para 1080p e artefatos de compressão.
 
-### ✨ Destaques da Versão v1.4.0
-1. **📶 Transmissão Automática via Wi-Fi e Cabo USB no NVIDIA Broadcast:**
-   - Use no **NVIDIA Broadcast** tanto pelo cabo USB quanto sem fio pela rede Wi-Fi, sem precisar digitar IP ou PIN!
-2. **🌐 Idioma Inglês como Padrão + Botão `Language: EN / PT`:**
-   - Todos os aplicativos (`CameraPhone-Setup.exe`, `CameraPhone.exe`, `CameraPhone.apk` e plugin OBS) iniciam em Inglês por padrão e possuem botão rápido para alternar para Português.
+### ✨ Novidades da v1.5.0
+1. **🎥 4K Real como Padrão no NVIDIA Broadcast e OBS Studio:**
+   - `CameraPhone.exe` agora solicita `3840x2160` em vez de `1920x1080` fixo.
+   - `cameraphone-vcam.dll` prioriza `4K60 NV12` e `4K30 NV12` e usa escalonamento bilinear suave no plano Y.
+   - `cameraphone.dll` define `4K UHD (3840x2160)` como padrão ao adicionar a fonte no OBS.
+2. **📱 Detecção de Celulares 4K30 & Bitrates de Estúdio (Android):**
+   - Detecta o FPS máximo suportado por resolução (`getOutputMinFrameDuration`) para que celulares `4K@30fps` negociem `3840x2160 @ 30fps` sem cair para 1080p.
+   - Bitrates elevados: **100 Mbps** (USB 4K) / **50 Mbps** (Wi-Fi 4K) e **35 Mbps** (USB <=1080p) / **20 Mbps** (Wi-Fi <=1080p).
 """
 
 def enable_github_pages(repo: str, token: str):
@@ -110,7 +103,7 @@ def enable_github_pages(repo: str, token: str):
 def main():
     token = get_token()
     repo = "ViniciusCostaGrillo/cameraphone"
-    tag = "v1.4.0"
+    tag = "v1.5.0"
 
     enable_github_pages(repo, token)
 
@@ -134,7 +127,7 @@ def main():
     create_url = f"https://api.github.com/repos/{repo}/releases"
     payload = {
         "tag_name": tag,
-        "name": "CameraPhone 4K Pro v1.4.0 — Wireless Wi-Fi & USB NVIDIA Broadcast + English/PT UI",
+        "name": "CameraPhone 4K Pro v1.5.0 — True 4K Studio Pipeline & 4K30 Sensor Support",
         "body": RELEASE_NOTES.strip(),
         "draft": False,
         "prerelease": False

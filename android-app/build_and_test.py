@@ -12,8 +12,8 @@ BUILD_DIR = ROOT / "build"
 KOTLINC = r"C:\Program Files\Android\Android Studio\plugins\Kotlin\kotlinc\bin\kotlinc.bat"
 KOTLIN_STDLIB = r"C:\Program Files\Android\Android Studio\plugins\Kotlin\kotlinc\lib\kotlin-stdlib.jar"
 JUNIT4_JAR = r"C:\Program Files\Android\Android Studio\lib\junit4.jar"
-ANDROID_JAR = r"C:\Users\Vinic\AppData\Local\Android\Sdk\platforms\android-34\android.jar"
-BUILD_TOOLS = Path(r"C:\Users\Vinic\AppData\Local\Android\Sdk\build-tools\34.0.0")
+ANDROID_JAR = str(sorted(Path(r"C:\Users\Vinic\AppData\Local\Android\Sdk\platforms").glob("android-*"))[-1] / "android.jar")
+BUILD_TOOLS = sorted(Path(r"C:\Users\Vinic\AppData\Local\Android\Sdk\build-tools").iterdir())[-1]
 
 def collect_kt_files(folder: Path):
     if not folder.exists():

@@ -214,8 +214,8 @@ struct CameraPhoneSourceContext {
     std::atomic<bool>      decode_running{false};
     std::thread            decode_thread{};
     std::recursive_mutex   pipeline_mutex{};
-    std::atomic<uint32_t>  current_width{1920};
-    std::atomic<uint32_t>  current_height{1080};
+    std::atomic<uint32_t>  current_width{3840};
+    std::atomic<uint32_t>  current_height{2160};
     VCamSharedMemoryWriter vcam_writer{};
     OBSStreamGuard         obs_guard{};
 
@@ -384,7 +384,7 @@ static void source_get_defaults(obs_data_t* settings) {
     api.obs_data_set_default_string(settings, "usb_device", "127.0.0.1");
     api.obs_data_set_default_string(settings, "wifi_ip", saved_ip.empty() ? "192.168.1.100" : saved_ip.c_str());
     api.obs_data_set_default_string(settings, "pin", saved_pin.c_str());
-    api.obs_data_set_default_string(settings, "resolution", "1920x1080");
+    api.obs_data_set_default_string(settings, "resolution", "3840x2160");
     api.obs_data_set_default_string(settings, "fps", "60");
     api.obs_data_set_default_string(settings, "codec", "hevc");
     api.obs_data_set_default_string(settings, "lens", "0");
@@ -683,16 +683,16 @@ static void source_destroy(void* data) {
 
 static uint32_t source_get_width(void* data) {
     auto* ctx = static_cast<CameraPhoneSourceContext*>(data);
-    if (!ctx) return 1920;
+    if (!ctx) return 3840;
     uint32_t w = ctx->current_width.load();
-    return w > 0 ? w : static_cast<uint32_t>(ctx->config.width > 0 ? ctx->config.width : 1920);
+    return w > 0 ? w : static_cast<uint32_t>(ctx->config.width > 0 ? ctx->config.width : 3840);
 }
 
 static uint32_t source_get_height(void* data) {
     auto* ctx = static_cast<CameraPhoneSourceContext*>(data);
-    if (!ctx) return 1080;
+    if (!ctx) return 2160;
     uint32_t h = ctx->current_height.load();
-    return h > 0 ? h : static_cast<uint32_t>(ctx->config.height > 0 ? ctx->config.height : 1080);
+    return h > 0 ? h : static_cast<uint32_t>(ctx->config.height > 0 ? ctx->config.height : 2160);
 }
 
 static void source_activate(void* data) {

@@ -337,9 +337,9 @@ private:
             cfg.host = target_host;
             cfg.port = 4748;
             cfg.pin = target_pin;
-            cfg.width = 1920;
-            cfg.height = 1080;
-            cfg.fps = is_usb ? 60 : 30;
+            cfg.width = 3840;
+            cfg.height = 2160;
+            cfg.fps = 60;
             cfg.codec = caps.supports_hevc ? "hevc" : "h264";
 
             video_queue.clear();

@@ -40,20 +40,27 @@ class HardwareVideoEncoder(
         var mc: MediaCodec? = null
         var surface: Surface? = null
 
-        val attempts = listOf(
-            Triple(mime, width, height),
-            Triple(mime, 1920, 1080),
-            Triple(MediaFormat.MIMETYPE_VIDEO_HEVC, 1920, 1080),
-            Triple(MediaFormat.MIMETYPE_VIDEO_AVC, 1920, 1080),
-            Triple(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 720)
-        )
+        data class EncoderAttempt(val mime: String, val w: Int, val h: Int, val fps: Int)
+        val attempts = buildList {
+            add(EncoderAttempt(mime, width, height, fps))
+            if (fps > 30) add(EncoderAttempt(mime, width, height, 30))
+            if (width > 2560) add(EncoderAttempt(mime, 2560, 1440, minOf(fps, 60)))
+            add(EncoderAttempt(mime, 1920, 1080, minOf(fps, 60)))
+            add(EncoderAttempt(MediaFormat.MIMETYPE_VIDEO_HEVC, 1920, 1080, 30))
+            add(EncoderAttempt(MediaFormat.MIMETYPE_VIDEO_AVC, 1920, 1080, 30))
+            add(EncoderAttempt(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 720, 30))
+        }.distinct()
 
         var lastErr: Throwable? = null
-        for ((tryMime, tryW, tryH) in attempts) {
+        for ((tryMime, tryW, tryH, tryFps) in attempts) {
             try {
                 val candidate = MediaCodec.createEncoderByType(tryMime)
-                val tryFps = if (tryW < width) 30 else fps
-                var tryBitrate = if (tryW == width) clampBitrateBps(bitrateBps) else 8_000_000
+                var tryBitrate = when {
+                    tryW >= 3840 -> clampBitrateBps(bitrateBps)
+                    tryW >= 2560 -> clampBitrateBps(minOf(bitrateBps, 50_000_000).coerceAtLeast(30_000_000))
+                    tryW >= 1920 -> clampBitrateBps(minOf(bitrateBps, 35_000_000).coerceAtLeast(20_000_000))
+                    else -> 10_000_000
+                }
                 try {
                     val vCaps = candidate.codecInfo.getCapabilitiesForType(tryMime)?.videoCapabilities
                     if (vCaps != null) {

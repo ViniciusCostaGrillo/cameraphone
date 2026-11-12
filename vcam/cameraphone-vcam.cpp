@@ -180,8 +180,8 @@ private:
 
     mutable std::mutex m_FormatMutex;
     AM_MEDIA_TYPE      m_CurrentMediaType{};
-    uint32_t           m_Width = 1920;
-    uint32_t           m_Height = 1080;
+    uint32_t           m_Width = 3840;
+    uint32_t           m_Height = 2160;
     REFERENCE_TIME     m_AvgTimePerFrame = 333333; // 30 FPS default
 };
 
@@ -409,14 +409,14 @@ bool CVCamOutputPin::BuildMediaType(int index, AM_MEDIA_TYPE* pmt) {
     GUID subtype = MEDIASUBTYPE_NV12_Local;
 
     switch (index) {
-    case 0: // 1080p30 NV12
-        w = 1920; h = 1080; avg_time = 333333; subtype = MEDIASUBTYPE_NV12_Local; break;
-    case 1: // 1080p60 NV12
-        w = 1920; h = 1080; avg_time = 166666; subtype = MEDIASUBTYPE_NV12_Local; break;
-    case 2: // 4K30 NV12
-        w = 3840; h = 2160; avg_time = 333333; subtype = MEDIASUBTYPE_NV12_Local; break;
-    case 3: // 4K60 NV12
+    case 0: // 4K60 NV12 (Primary Studio Default)
         w = 3840; h = 2160; avg_time = 166666; subtype = MEDIASUBTYPE_NV12_Local; break;
+    case 1: // 4K30 NV12
+        w = 3840; h = 2160; avg_time = 333333; subtype = MEDIASUBTYPE_NV12_Local; break;
+    case 2: // 1080p60 NV12
+        w = 1920; h = 1080; avg_time = 166666; subtype = MEDIASUBTYPE_NV12_Local; break;
+    case 3: // 1080p30 NV12
+        w = 1920; h = 1080; avg_time = 333333; subtype = MEDIASUBTYPE_NV12_Local; break;
     case 4: // 720p30 NV12
         w = 1280; h = 720; avg_time = 333333; subtype = MEDIASUBTYPE_NV12_Local; break;
     case 5: // 720p60 NV12
@@ -952,11 +952,7 @@ static void BlitOrScaleNV12(const uint8_t* src, uint32_t src_w, uint32_t src_h,
             std::memcpy(dst, src, (dst_w * dst_h * 3) / 2);
             return;
         }
-        // Precompute X lookup tables once per frame and reuse duplicate rows via memcpy
-        std::vector<uint32_t> x_map(dst_w);
-        for (uint32_t x = 0; x < dst_w; ++x) {
-            x_map[x] = (x * src_w) / dst_w;
-        }
+        // Precompute UV X lookup table once per frame
         uint32_t half_dst_w = dst_w / 2;
         uint32_t half_src_w = src_w / 2;
         std::vector<uint32_t> uv_x_map(half_dst_w);
@@ -966,24 +962,36 @@ static void BlitOrScaleNV12(const uint8_t* src, uint32_t src_w, uint32_t src_h,
 
         uint8_t* dst_y  = dst;
         uint8_t* dst_uv = dst + (dst_w * dst_h);
-        uint32_t prev_sy = UINT32_MAX;
+        // Bilinear Y-plane scaling (8-bit fixed-point) for smooth quality when resolutions differ
+        std::vector<uint32_t> x0_map(dst_w), x1_map(dst_w), wx_map(dst_w);
+        for (uint32_t x = 0; x < dst_w; ++x) {
+            uint64_t pos_fp = (dst_w > 1 && src_w > 1) ? ((static_cast<uint64_t>(x) * (src_w - 1) * 256ULL) / (dst_w - 1)) : 0ULL;
+            uint32_t x0 = static_cast<uint32_t>(pos_fp >> 8);
+            uint32_t x1 = (x0 + 1 < src_w) ? (x0 + 1) : x0;
+            x0_map[x] = x0;
+            x1_map[x] = x1;
+            wx_map[x] = static_cast<uint32_t>(pos_fp & 0xFF);
+        }
         for (uint32_t y = 0; y < dst_h; ++y) {
-            uint32_t sy = (y * src_h) / dst_h;
+            uint64_t pos_fp = (dst_h > 1 && src_h > 1) ? ((static_cast<uint64_t>(y) * (src_h - 1) * 256ULL) / (dst_h - 1)) : 0ULL;
+            uint32_t y0 = static_cast<uint32_t>(pos_fp >> 8);
+            uint32_t y1 = (y0 + 1 < src_h) ? (y0 + 1) : y0;
+            uint32_t wy = static_cast<uint32_t>(pos_fp & 0xFF);
+            uint32_t inv_wy = 256 - wy;
+            const uint8_t* row0 = src_y + y0 * src_w;
+            const uint8_t* row1 = src_y + y1 * src_w;
             uint8_t* drow = dst_y + y * dst_w;
-            if (sy == prev_sy && y > 0) {
-                std::memcpy(drow, drow - dst_w, dst_w);
-                continue;
-            }
-            prev_sy = sy;
-            const uint8_t* srow = src_y + sy * src_w;
             for (uint32_t x = 0; x < dst_w; ++x) {
-                drow[x] = srow[x_map[x]];
+                uint32_t x0 = x0_map[x], x1 = x1_map[x], wx = wx_map[x], inv_wx = 256 - wx;
+                uint32_t top = row0[x0] * inv_wx + row0[x1] * wx;
+                uint32_t bot = row1[x0] * inv_wx + row1[x1] * wx;
+                drow[x] = static_cast<uint8_t>((top * inv_wy + bot * wy + 32768) >> 16);
             }
         }
 
         uint32_t half_dst_h = dst_h / 2;
         uint32_t half_src_h = src_h / 2;
-        prev_sy = UINT32_MAX;
+        uint32_t prev_sy = UINT32_MAX;
         for (uint32_t y = 0; y < half_dst_h; ++y) {
             uint32_t sy = (y * half_src_h) / half_dst_h;
             uint8_t* drow = dst_uv + y * dst_w;
